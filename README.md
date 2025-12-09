@@ -331,13 +331,23 @@ uv run python experiment/quality_experiment.py --mode base --num-articles 10 --q
 
 ### Critical Perspective
 
-Recent work by [Lee et al. (2024)](https://arxiv.org/abs/2512.03643) argues that optical context compression is essentially a "bad autoencoder" - a suboptimal approach compared to properly-trained text compression methods. Their key claims:
+Recent work by [Lee et al. (2024)](https://arxiv.org/abs/2512.03643) titled "Optical Context Compression Is Just (Bad) Autoencoding" critiques vision-based context compression. **Important**: they argue there are *better ways* to compress context, not that vision tokens can't encode information at all.
 
-1. **Optical compression loses to text autoencoders** - Well-designed text compression achieves better quality at similar compression ratios
-2. **Inefficient information bottleneck** - Vision encoders weren't optimized for text compression
-3. **Computational overhead** - Requires rendering + vision encoding vs. direct text compression
+**Their key findings:**
+1. **Simpler methods win** - Mean pooling and learned hierarchical encoders match or beat vision at the same compression ratios
+2. **Fails to beat truncation** - For language modeling tasks, optical compression doesn't outperform simply truncating text
+3. **Reconstruction ≠ downstream performance** - Good OCR accuracy doesn't translate to good LM performance
 
-Our experiments partially support this critique: vision accuracy only matches text with large mode (400 tokens, 13x compression). However, we also observe cases where vision outperforms truncated text when documents overflow context limits, suggesting optical compression may still have niche utility for extremely long documents.
+**What they propose instead:**
+- Parameter-free mean pooling of text embeddings
+- Learned hierarchical text compression
+- These achieve better compression/quality trade-offs without rendering overhead
+
+**How our experiments relate:**
+- Our "text" baseline is essentially truncation (context overflow), which the paper predicts should be competitive
+- Vision only matches truncated text at large mode (13x compression) - consistent with their critique
+- We did not compare against text-based compression methods (mean pooling, learned encoders), which the paper suggests would outperform vision
+- The cases where vision beats text (Article 70bd0370) may reflect different information preservation patterns rather than vision being superior
 
 ---
 
