@@ -264,6 +264,8 @@ Examples:
                        help='Show calculations without running model')
     parser.add_argument('--prompt', type=str, default='<image>\nFree OCR.',
                        help='Prompt for OCR')
+    parser.add_argument('--show-output', action='store_true',
+                       help='Show OCR output text')
 
     args = parser.parse_args()
 
@@ -303,9 +305,10 @@ Examples:
         print(f"  Normalized ED: {metrics['normalized_ed']}")
         print(f"  Precision: {metrics['precision']}%")
 
-    print(f"\n[OCR OUTPUT]")
-    print("-" * 60)
-    print(output[:2000] + ("..." if len(output) > 2000 else ""))
+    if args.show_output:
+        print(f"\n[OCR OUTPUT]")
+        print("-" * 60)
+        print(output[:2000] + ("..." if len(output) > 2000 else ""))
 
 
 if __name__ == '__main__':
