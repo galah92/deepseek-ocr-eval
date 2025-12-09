@@ -1,0 +1,27 @@
+INVOICE #INV-2024-0892
+Date: November 15, 2024
+Due Date: December 15, 2024
+
+Bill To:
+  Acme Corporation
+  123 Business Ave
+  New York, NY 10001
+  Contact: Robert Johnson
+  Email: rjohnson@acme.com
+
+Ship To:
+  Acme Warehouse
+  456 Industrial Blvd
+  Newark, NJ 07102
+
+Items:
+  1. Widget Pro (WP-100)    x10   $50.00    $500.00
+  2. Gadget Plus (GP-200)   x5    $75.00    $375.00
+  3. Tool Kit (TK-300)      x2    $120.00   $240.00
+
+Subtotal: $1,115.00
+Tax (8%): $89.20
+Shipping: $25.00
+Total: $1,229.20
+
+Payment Terms: Net 30

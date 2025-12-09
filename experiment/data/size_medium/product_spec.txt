@@ -1,0 +1,10 @@
+Product Specification
+--------------------
+Product: Wireless Headphones XR-500
+SKU: WH-XR500-BLK
+Price: $149.99
+Battery Life: 30 hours
+Weight: 250g
+Bluetooth: 5.3
+Colors: Black, White, Navy
+Warranty: 2 years

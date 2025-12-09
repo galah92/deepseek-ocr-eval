@@ -1,0 +1,697 @@
+{
+  "mode": "small",
+  "documents": {
+    "employee_record": {
+      "questions": [
+        {
+          "question": "What is John's employee ID?",
+          "expected": "EMP-2847",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 82,
+            "vision_overhead": 64,
+            "total_tokens": 146,
+            "latency": 0.699
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 118,
+            "latency": 0.248
+          }
+        },
+        {
+          "question": "What department does John work in?",
+          "expected": "Engineering",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 82,
+            "vision_overhead": 64,
+            "total_tokens": 146,
+            "latency": 0.205
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 118,
+            "latency": 0.207
+          }
+        },
+        {
+          "question": "Who is John's manager?",
+          "expected": "Sarah Chen",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 81,
+            "vision_overhead": 64,
+            "total_tokens": 145,
+            "latency": 0.179
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 117,
+            "latency": 0.187
+          }
+        },
+        {
+          "question": "What is John's salary?",
+          "expected": "$95,000",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 81,
+            "vision_overhead": 64,
+            "total_tokens": 145,
+            "latency": 0.194
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 117,
+            "latency": 0.201
+          }
+        },
+        {
+          "question": "Where is John's office?",
+          "expected": "Building A, Room 412",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 81,
+            "vision_overhead": 64,
+            "total_tokens": 145,
+            "latency": 0.182
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 117,
+            "latency": 0.205
+          }
+        }
+      ],
+      "text_correct": 5,
+      "vision_correct": 5,
+      "text_tokens": 407,
+      "vision_tokens": 587,
+      "text_accuracy": 100.0,
+      "vision_accuracy": 100.0,
+      "avg_text_tokens": 81.4,
+      "avg_vision_tokens": 117.4,
+      "compression_ratio": 0.69
+    },
+    "product_spec": {
+      "questions": [
+        {
+          "question": "What is the SKU?",
+          "expected": "WH-XR500-BLK",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 92,
+            "vision_overhead": 64,
+            "total_tokens": 156,
+            "latency": 0.182
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 117,
+            "latency": 0.189
+          }
+        },
+        {
+          "question": "How long is the battery life?",
+          "expected": "30 hours",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 93,
+            "vision_overhead": 64,
+            "total_tokens": 157,
+            "latency": 0.182
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 118,
+            "latency": 0.216
+          }
+        },
+        {
+          "question": "What Bluetooth version does it have?",
+          "expected": "5.3",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 93,
+            "vision_overhead": 64,
+            "total_tokens": 157,
+            "latency": 0.183
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 118,
+            "latency": 0.196
+          }
+        },
+        {
+          "question": "What is the warranty period?",
+          "expected": "2 years",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 92,
+            "vision_overhead": 64,
+            "total_tokens": 156,
+            "latency": 0.177
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 117,
+            "latency": 0.184
+          }
+        },
+        {
+          "question": "What colors are available?",
+          "expected": "Black, White, Navy",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 91,
+            "vision_overhead": 64,
+            "total_tokens": 155,
+            "latency": 0.179
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 116,
+            "latency": 0.212
+          }
+        }
+      ],
+      "text_correct": 5,
+      "vision_correct": 5,
+      "text_tokens": 461,
+      "vision_tokens": 586,
+      "text_accuracy": 100.0,
+      "vision_accuracy": 100.0,
+      "avg_text_tokens": 92.2,
+      "avg_vision_tokens": 117.2,
+      "compression_ratio": 0.79
+    },
+    "invoice": {
+      "questions": [
+        {
+          "question": "What is the invoice number?",
+          "expected": "INV-2024-0892",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 234,
+            "vision_overhead": 64,
+            "total_tokens": 298,
+            "latency": 0.199
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 117,
+            "latency": 0.197
+          }
+        },
+        {
+          "question": "What is the due date?",
+          "expected": "December 15, 2024",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 234,
+            "vision_overhead": 64,
+            "total_tokens": 298,
+            "latency": 0.187
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 117,
+            "latency": 0.209
+          }
+        },
+        {
+          "question": "What is the billing contact's email?",
+          "expected": "rjohnson@acme.com",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 236,
+            "vision_overhead": 64,
+            "total_tokens": 300,
+            "latency": 0.189
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 119,
+            "latency": 0.195
+          }
+        },
+        {
+          "question": "What city is the shipping address in?",
+          "expected": "Newark",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 236,
+            "vision_overhead": 64,
+            "total_tokens": 300,
+            "latency": 0.193
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 119,
+            "latency": 0.204
+          }
+        },
+        {
+          "question": "How many Widget Pro were ordered?",
+          "expected": "10",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 235,
+            "vision_overhead": 64,
+            "total_tokens": 299,
+            "latency": 0.206
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 118,
+            "latency": 0.202
+          }
+        },
+        {
+          "question": "What is the unit price of Gadget Plus?",
+          "expected": "$75.00",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 238,
+            "vision_overhead": 64,
+            "total_tokens": 302,
+            "latency": 0.189
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 121,
+            "latency": 0.199
+          }
+        },
+        {
+          "question": "What is the tax amount?",
+          "expected": "$89.20",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 234,
+            "vision_overhead": 64,
+            "total_tokens": 298,
+            "latency": 0.188
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 117,
+            "latency": 0.202
+          }
+        },
+        {
+          "question": "What is the total amount?",
+          "expected": "$1,229.20",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 234,
+            "vision_overhead": 64,
+            "total_tokens": 298,
+            "latency": 0.204
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 117,
+            "latency": 0.202
+          }
+        },
+        {
+          "question": "What are the payment terms?",
+          "expected": "Net 30",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 234,
+            "vision_overhead": 64,
+            "total_tokens": 298,
+            "latency": 0.19
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 117,
+            "latency": 0.197
+          }
+        },
+        {
+          "question": "What is the SKU for Tool Kit?",
+          "expected": "TK-300",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 237,
+            "vision_overhead": 64,
+            "total_tokens": 301,
+            "latency": 0.19
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 120,
+            "latency": 0.207
+          }
+        }
+      ],
+      "text_correct": 10,
+      "vision_correct": 10,
+      "text_tokens": 2352,
+      "vision_tokens": 1182,
+      "text_accuracy": 100.0,
+      "vision_accuracy": 100.0,
+      "avg_text_tokens": 235.2,
+      "avg_vision_tokens": 118.2,
+      "compression_ratio": 1.99
+    },
+    "meeting_minutes": {
+      "questions": [
+        {
+          "question": "What is the project name?",
+          "expected": "Phoenix Website Redesign",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 289,
+            "vision_overhead": 64,
+            "total_tokens": 353,
+            "latency": 0.199
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 117,
+            "latency": 0.201
+          }
+        },
+        {
+          "question": "Who was absent from the meeting?",
+          "expected": "Frank Brown",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 290,
+            "vision_overhead": 64,
+            "total_tokens": 354,
+            "latency": 0.186
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 118,
+            "latency": 0.201
+          }
+        },
+        {
+          "question": "What item is blocked and why?",
+          "expected": "API rate limiting",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 290,
+            "vision_overhead": 64,
+            "total_tokens": 354,
+            "latency": 0.207
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 118,
+            "latency": 0.219
+          }
+        },
+        {
+          "question": "What is the revised deadline?",
+          "expected": "December 15, 2024",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 289,
+            "vision_overhead": 64,
+            "total_tokens": 353,
+            "latency": 0.188
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 117,
+            "latency": 0.215
+          }
+        },
+        {
+          "question": "How much budget remains?",
+          "expected": "$51,500",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 288,
+            "vision_overhead": 64,
+            "total_tokens": 352,
+            "latency": 0.191
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 116,
+            "latency": 0.202
+          }
+        },
+        {
+          "question": "What is Bob's action item deadline?",
+          "expected": "Nov 1",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 291,
+            "vision_overhead": 64,
+            "total_tokens": 355,
+            "latency": 0.203
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 119,
+            "latency": 0.21
+          }
+        },
+        {
+          "question": "Who is the UX Designer?",
+          "expected": "Carol Davis",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 289,
+            "vision_overhead": 64,
+            "total_tokens": 353,
+            "latency": 0.194
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 117,
+            "latency": 0.2
+          }
+        },
+        {
+          "question": "What was completed in the sprint review?",
+          "expected": "User authentication, Dashboard UI",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 291,
+            "vision_overhead": 64,
+            "total_tokens": 355,
+            "latency": 0.191
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 119,
+            "latency": 0.214
+          }
+        },
+        {
+          "question": "When is the next meeting?",
+          "expected": "November 4, 2024",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 289,
+            "vision_overhead": 64,
+            "total_tokens": 353,
+            "latency": 0.189
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 117,
+            "latency": 0.202
+          }
+        },
+        {
+          "question": "What is the meeting location?",
+          "expected": "Conference Room B",
+          "text": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "input_tokens": 289,
+            "vision_overhead": 64,
+            "total_tokens": 353,
+            "latency": 0.19
+          },
+          "vision": {
+            "answer": "",
+            "correct": true,
+            "match_type": "partial",
+            "vision_tokens": 100,
+            "total_tokens": 117,
+            "latency": 0.213
+          }
+        }
+      ],
+      "text_correct": 10,
+      "vision_correct": 10,
+      "text_tokens": 2895,
+      "vision_tokens": 1175,
+      "text_accuracy": 100.0,
+      "vision_accuracy": 100.0,
+      "avg_text_tokens": 289.5,
+      "avg_vision_tokens": 117.5,
+      "compression_ratio": 2.46
+    }
+  },
+  "summary": {
+    "total_questions": 30,
+    "text_correct": 30,
+    "vision_correct": 30,
+    "text_accuracy": 100.0,
+    "vision_accuracy": 100.0,
+    "avg_text_tokens": 203.8,
+    "avg_vision_tokens": 117.7,
+    "compression_ratio": 1.73
+  }
+}

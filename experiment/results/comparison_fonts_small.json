@@ -1,0 +1,81 @@
+{
+  "mode": "small",
+  "configs_tested": [
+    "font_mono",
+    "font_serif",
+    "font_sans"
+  ],
+  "results": {
+    "font_mono": {
+      "total_questions": 30,
+      "text_correct": 28,
+      "vision_correct": 26,
+      "text_accuracy": 93.3,
+      "vision_accuracy": 86.7,
+      "text_tokens": 7645,
+      "vision_tokens": 3320,
+      "compression_ratio": 2.3,
+      "tokens_saved": 4325
+    },
+    "font_serif": {
+      "total_questions": 30,
+      "text_correct": 28,
+      "vision_correct": 25,
+      "text_accuracy": 93.3,
+      "vision_accuracy": 83.3,
+      "text_tokens": 7645,
+      "vision_tokens": 3320,
+      "compression_ratio": 2.3,
+      "tokens_saved": 4325
+    },
+    "font_sans": {
+      "total_questions": 30,
+      "text_correct": 28,
+      "vision_correct": 24,
+      "text_accuracy": 93.3,
+      "vision_accuracy": 80.0,
+      "text_tokens": 7645,
+      "vision_tokens": 3320,
+      "compression_ratio": 2.3,
+      "tokens_saved": 4325
+    }
+  },
+  "ranking": [
+    {
+      "config": "font_mono",
+      "total_questions": 30,
+      "text_correct": 28,
+      "vision_correct": 26,
+      "text_accuracy": 93.3,
+      "vision_accuracy": 86.7,
+      "text_tokens": 7645,
+      "vision_tokens": 3320,
+      "compression_ratio": 2.3,
+      "tokens_saved": 4325
+    },
+    {
+      "config": "font_serif",
+      "total_questions": 30,
+      "text_correct": 28,
+      "vision_correct": 25,
+      "text_accuracy": 93.3,
+      "vision_accuracy": 83.3,
+      "text_tokens": 7645,
+      "vision_tokens": 3320,
+      "compression_ratio": 2.3,
+      "tokens_saved": 4325
+    },
+    {
+      "config": "font_sans",
+      "total_questions": 30,
+      "text_correct": 28,
+      "vision_correct": 24,
+      "text_accuracy": 93.3,
+      "vision_accuracy": 80.0,
+      "text_tokens": 7645,
+      "vision_tokens": 3320,
+      "compression_ratio": 2.3,
+      "tokens_saved": 4325
+    }
+  ]
+}

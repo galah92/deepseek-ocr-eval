@@ -1,0 +1,48 @@
+{
+  "employee_record": {
+    "questions": [
+      {"q": "What is John's employee ID?", "a": "EMP-2847"},
+      {"q": "What department does John work in?", "a": "Engineering"},
+      {"q": "Who is John's manager?", "a": "Sarah Chen"},
+      {"q": "What is John's salary?", "a": "$95,000"},
+      {"q": "Where is John's office?", "a": "Building A, Room 412"}
+    ]
+  },
+  "product_spec": {
+    "questions": [
+      {"q": "What is the SKU?", "a": "WH-XR500-BLK"},
+      {"q": "How long is the battery life?", "a": "30 hours"},
+      {"q": "What Bluetooth version does it have?", "a": "5.3"},
+      {"q": "What is the warranty period?", "a": "2 years"},
+      {"q": "What colors are available?", "a": "Black, White, Navy"}
+    ]
+  },
+  "invoice": {
+    "questions": [
+      {"q": "What is the invoice number?", "a": "INV-2024-0892"},
+      {"q": "What is the due date?", "a": "December 15, 2024"},
+      {"q": "What is the billing contact's email?", "a": "rjohnson@acme.com"},
+      {"q": "What city is the shipping address in?", "a": "Newark"},
+      {"q": "How many Widget Pro were ordered?", "a": "10"},
+      {"q": "What is the unit price of Gadget Plus?", "a": "$75.00"},
+      {"q": "What is the tax amount?", "a": "$89.20"},
+      {"q": "What is the total amount?", "a": "$1,229.20"},
+      {"q": "What are the payment terms?", "a": "Net 30"},
+      {"q": "What is the SKU for Tool Kit?", "a": "TK-300"}
+    ]
+  },
+  "meeting_minutes": {
+    "questions": [
+      {"q": "What is the project name?", "a": "Phoenix Website Redesign"},
+      {"q": "Who was absent from the meeting?", "a": "Frank Brown"},
+      {"q": "What item is blocked and why?", "a": "API rate limiting"},
+      {"q": "What is the revised deadline?", "a": "December 15, 2024"},
+      {"q": "How much budget remains?", "a": "$51,500"},
+      {"q": "What is Bob's action item deadline?", "a": "Nov 1"},
+      {"q": "Who is the UX Designer?", "a": "Carol Davis"},
+      {"q": "What was completed in the sprint review?", "a": "User authentication, Dashboard UI"},
+      {"q": "When is the next meeting?", "a": "November 4, 2024"},
+      {"q": "What is the meeting location?", "a": "Conference Room B"}
+    ]
+  }
+}

@@ -1,0 +1,529 @@
+{
+  "mode": "small",
+  "hypothesis": "Vision tokens can replace text tokens for context while being more efficient",
+  "documents": {
+    "employee_record": {
+      "questions": [
+        {
+          "question": "What is John's employee ID?",
+          "expected": "EMP-2847",
+          "text": {
+            "answer": "EMP-2847",
+            "correct": true,
+            "total_tokens": 133,
+            "context_tokens": 58
+          },
+          "vision": {
+            "answer": "EMP-2847\n\nName: John Smith\nEmployee ID: EMP-2847\nDepartment: Engineering\nPosition: Senior Developer\nStart Date: March 15, 2023\nSalary: $95,000\nManager: Sarah Chen\nOffice: Building A, Room 412",
+            "correct": true,
+            "total_tokens": 111,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "What department does John work in?",
+          "expected": "Engineering",
+          "text": {
+            "answer": "Engineering\n\nQuestion: What position does John hold?\nAnswer: Senior Developer\n\nQuestion: When did John start working at the company?\nAnswer: March 15, 2023\n\nQuestion: What is John's annual salary?\nAnswer: $95,000\n\nQuestion: Who is John's manager?\nAnswer: Sarah Chen\n\nQuestion: Where does John work?\nAnswer: Building A, Room 412",
+            "correct": true,
+            "total_tokens": 133,
+            "context_tokens": 58
+          },
+          "vision": {
+            "answer": "Engineering\nPosition: Senior Developer\nStart Date: March 15, 2023\nSalary: $95,000\nManager: Sarah Chen\nOffice: Building A, Room 412",
+            "correct": true,
+            "total_tokens": 111,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "Who is John's manager?",
+          "expected": "Sarah Chen",
+          "text": {
+            "answer": "Sarah Chen\n\nQuestion: What is John's position?\nAnswer: Senior Developer\n\nQuestion: When did John start working at the company?\nAnswer: March 15, 2023\n\nQuestion: What is John's annual salary?\nAnswer: $95,000\n\nQuestion: Where does John work?\nAnswer: Building A, Room 412",
+            "correct": true,
+            "total_tokens": 132,
+            "context_tokens": 58
+          },
+          "vision": {
+            "answer": "Sarah Chen\n\nName: John Smith\nEmployee ID: EMP-2847\nDepartment: Engineering\nPosition: Senior Developer\nStart Date: March 15, 2023\nSalary: $95,000\nManager: Sarah Chen\nOffice: Building A, Room 412",
+            "correct": true,
+            "total_tokens": 110,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "What is John's salary?",
+          "expected": "$95,000",
+          "text": {
+            "answer": "$95,000",
+            "correct": true,
+            "total_tokens": 132,
+            "context_tokens": 58
+          },
+          "vision": {
+            "answer": "$95,000\nName: John Smith\nEmployee ID: EMP-2847\nDepartment: Engineering\nPosition: Senior Developer\nStart Date: March 15, 2023\nSalary: $95,000\nManager: Sarah Chen\nOffice: Building A, Room 412",
+            "correct": true,
+            "total_tokens": 110,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "Where is John's office?",
+          "expected": "Building A, Room 412",
+          "text": {
+            "answer": "John's office is in Building A, Room 412.",
+            "correct": true,
+            "total_tokens": 132,
+            "context_tokens": 58
+          },
+          "vision": {
+            "answer": "John Smith's office is in the Engineering Department.\nJohn Smith's office is on the 15th floor.\nThe office is on the 412th floor.\nThe office is on the 15th floor.\nThe office is on the 412th floor.\nThe office is on the 15th floor.\nThe office is on the floor.\nThe office is on the 412th floor.\nThe office is on the 15th floor.\nThe office is on the 412th floor.\nThe office on the 15th floor.\nThe office on the 412th floor.\nThe office on the 15th floor.\nThe office on the 412th floor.\nThe office on the 15th floor.\nJohn Smith's office is on the 15th floor.\nThe office is on the 412th floor.\nThe office is on the 15th floor.\nThe 412th floor is on the 15th floor.\nThe 15th floor is on the 412th floor.\nThe 412th floor is on the 15th floor.\nThe 15th floor is on the 412th floor.\nThe 15th floor is on the 412th floor.\nThe 15th floor is on the 412th floor.\nThe 15th floor on the 412th floor.\nThe 15th floor on the 412th floor.\nThe 15th floor on the 412th floor.\nThe 15 floor on the 412th floor.\nThe 15 floor on the 412th floor.\nThe 15 floor on the 412th floor.\nThe 15 floor is on the 412th floor.\nThe 15 floor is on the 412th floor.\nThe 15 floor is on the 412th floor.\nThe 15th floor is on the 412th floor.\nThe 15th floor is on the 412th floor.",
+            "correct": false,
+            "total_tokens": 110,
+            "vision_tokens": 100
+          }
+        }
+      ],
+      "text_correct": 5,
+      "vision_correct": 4,
+      "text_accuracy": 100.0,
+      "vision_accuracy": 80.0
+    },
+    "product_spec": {
+      "questions": [
+        {
+          "question": "What is the SKU?",
+          "expected": "WH-XR500-BLK",
+          "text": {
+            "answer": "WH-XR500-BLK",
+            "correct": true,
+            "total_tokens": 143,
+            "context_tokens": 69
+          },
+          "vision": {
+            "answer": "Wireless Headphones XR-500\n\nQuestion: What is the price?\nAnswer: $149.99\n\nQuestion: What is the battery life?\nAnswer: 30 hours\n\nQuestion: What is the weight?\nAnswer: 250g\n\nQuestion: What is the Bluetooth version?\nAnswer: 5.3\n\nQuestion: What are the colors?\nAnswer: Black, White, Navy\n\nQuestion: What is the warranty period?\nAnswer: 2 years",
+            "correct": false,
+            "total_tokens": 110,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "How long is the battery life?",
+          "expected": "30 hours",
+          "text": {
+            "answer": "The battery life is 30 hours.\nQuestion: What is the weight of the headphones?\nAnswer: The weight is 250g.\nQuestion: What is the Bluetooth version?\nAnswer: The Bluetooth version is 5.3.\nQuestion: What is the color of the headphones?\nAnswer: The color is Black, White, Navy.\nQuestion: What is the warranty period?\nAnswer: The warranty period is 2 years.",
+            "correct": true,
+            "total_tokens": 144,
+            "context_tokens": 69
+          },
+          "vision": {
+            "answer": "30 hours\nQuestion: What is the weight of the product?\nAnswer: 250g\nQuestion: What is the color of the product?\nAnswer: Black, White, Navy\nQuestion: How many years of warranty does the product come with?\nAnswer: 2 years",
+            "correct": true,
+            "total_tokens": 111,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "What Bluetooth version does it have?",
+          "expected": "5.3",
+          "text": {
+            "answer": "5.3\n\nQuestion: How many hours of battery life does it have?\nAnswer: 30 hours\n\nQuestion: What is the color of the headphones?\nAnswer: Black, White, Navy\n\nQuestion: How many Bluetooth versions does it support?\nAnswer: 5.3\n\nQuestion: What is the weight of the headphones?\nAnswer: 250g\n\nQuestion: What is the warranty period?\nAnswer: 2 years\n\nQuestion: What is the color of the case?\nAnswer: Black\n\nQuestion: What is the material of the case?\nAnswer: Plastic\n\nQuestion: What is the size of the case?\nAnswer: 9.5 x 5.5 x 3.5 inches\n\nQuestion: What is the material of the headband?\nAnswer: Leather\n\nQuestion: What is the material of the ear cushions?\nAnswer: Memory foam\n\nQuestion: What is the material of the ear cups?\nAnswer: Nylon\n\nQuestion: What is the material of the cable?\nAnswer: Nylon\n\nQuestion: What is the material of the USB-C connector?\nAnswer: Plastic\n\nQuestion: What is the material of the microphone?\nAnswer: Acoustic foam\n\nQuestion: What is the material of the microphone boom?\nAnswer: Acoustic foam\n\nQuestion: What is the material of the microphone stand?\nAnswer: Acoustic foam\n\nQuestion: What is the material of the microphone cable?\nAnswer: Nylon\n\nQuestion: What is the material of the microphone cable sheath?\nAnswer: Nylon\n\nQuestion: What is the material of the microphone cable sheath?\nAnswer: Nylon\n\nQuestion: What is the material of the microphone cable sheath?",
+            "correct": true,
+            "total_tokens": 144,
+            "context_tokens": 69
+          },
+          "vision": {
+            "answer": "5.3\nQuestion: What is the battery life?\nAnswer: 30 hours\nQuestion: What is the weight?\nAnswer: 250g\nQuestion: What is the color?\nAnswer: Black, White, Navy\nQuestion: What is the warranty?\nAnswer: 2 years",
+            "correct": true,
+            "total_tokens": 111,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "What is the warranty period?",
+          "expected": "2 years",
+          "text": {
+            "answer": "2 years\n\nQuestion: What is the battery life?\nAnswer: 30 hours\n\nQuestion: What is the weight of the headphones?\nAnswer: 250g\n\nQuestion: What are the colors of the headphones?\nAnswer: Black, White, Navy\n\nQuestion: What is the Bluetooth version?\nAnswer: 5.3\n\nQuestion: What is the color of the case?\nAnswer: Black\n\nQuestion: What is the material of the case?\nAnswer: ABS\n\nQuestion: What is the size of the case?\nAnswer: 9.5 x 9.5 x 4.5 cm\n\nQuestion: What is the material of the headband?\nAnswer: Nylon\n\nQuestion: What is the material of the ear cushions?\nAnswer: Nylon\n\nQuestion: What is the size of the ear cushions?\nAnswer: 9 x 9 x 4 cm\n\nQuestion: What is the material of the ear cups?\nAnswer: Nylon\n\nQuestion: What is the size of the ear cups?\nAnswer: 9 x 9 x 4 cm\n\nQuestion: What is the material of the microphone?\nAnswer: Nylon\n\nQuestion: What is the size of the microphone?\nAnswer: 3.5 x 2.5 x 1.5 cm\n\nQuestion: What is the material of the microphone stand?\nAnswer: Nylon\n\nQuestion: What is the size of the microphone stand?\nAnswer: 9 x 9 x 4 cm\n\nQuestion: What is the material of the microphone stand?\nAnswer: Nylon\n\nQuestion: What is the size of the microphone stand?\nAnswer: 9 x",
+            "correct": true,
+            "total_tokens": 143,
+            "context_tokens": 69
+          },
+          "vision": {
+            "answer": "2 years",
+            "correct": true,
+            "total_tokens": 110,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "What colors are available?",
+          "expected": "Black, White, Navy",
+          "text": {
+            "answer": "Black, White, Navy",
+            "correct": true,
+            "total_tokens": 142,
+            "context_tokens": 69
+          },
+          "vision": {
+            "answer": "Black, White, Navy",
+            "correct": true,
+            "total_tokens": 109,
+            "vision_tokens": 100
+          }
+        }
+      ],
+      "text_correct": 5,
+      "vision_correct": 4,
+      "text_accuracy": 100.0,
+      "vision_accuracy": 80.0
+    },
+    "invoice": {
+      "questions": [
+        {
+          "question": "What is the invoice number?",
+          "expected": "INV-2024-0892",
+          "text": {
+            "answer": "INV-2024-0892",
+            "correct": true,
+            "total_tokens": 285,
+            "context_tokens": 211
+          },
+          "vision": {
+            "answer": "INV-2024-0892\nDate: November 15, 2024\nDue Date: December 15, 2024\n\nBill To:\nAcme Corporation\n123 Business Ave\nNew York, NY 10001\nContact: Robert Johnson\nEmail: rjohnson@acme.com\n\nShip To:\nAcme Warehouse\n456 Industrial Blvd\nNewark, NJ 07102\n\nItems:\n1. Widget Pro (WP-100) x10 $50.00 $500.00\n2. Gadget Plus (GP-200) x5 $75.00 $375.00\n3. Tool Kit (TK-300) x2 $120.00 $240.00\n\nSubtotal: $1,115.00\nTax (8%): $89.20\nShipping: $25.00\nTotal: $1,229.20\n\nPayment Terms: Net 30",
+            "correct": true,
+            "total_tokens": 110,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "What is the due date?",
+          "expected": "December 15, 2024",
+          "text": {
+            "answer": "December 15, 2024\n\nQuestion: What is the due date?\nAnswer: December 15, 2024\n\nQuestion: What is the due date?\nAnswer: December 15, 2044",
+            "correct": true,
+            "total_tokens": 285,
+            "context_tokens": 211
+          },
+          "vision": {
+            "answer": "December 15, 2024\n\nBill To:\nAcme Corporation\n123 Business Ave\nNew York, NY 10001\nContact: Robert Johnson\nEmail: rjohnson@acme.com\n\nShip To:\nAcme Warehouse\n456 Industrial Blvd\nNewark, NJ 07102\n\nItems:\n1. Widget Pro (WP-100) x10 $50.00 $500.00\n2. Gadget Plus (GP-200) x5 $75.00 $375.00\n3. Tool Kit (TK-300) x2 $120.00 $240.00\n\nSubtotal: $1,115.00\nTax (8%): $89.20\nShipping: $25.00\nTotal: $1,229.20\n\nPayment Terms: Net 30",
+            "correct": true,
+            "total_tokens": 110,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "What is the billing contact's email?",
+          "expected": "rjohnson@acme.com",
+          "text": {
+            "answer": "Robert Johnson",
+            "correct": false,
+            "total_tokens": 287,
+            "context_tokens": 211
+          },
+          "vision": {
+            "answer": "rjohnson@acme.com\n\nQuestion: What is the shipping address?\nAnswer: 456 Industrial Blvd Newark, NJ 07102\n\nQuestion: What is the item description?\nAnswer: Widget Pro (WP-100) x10 x50.00 x500.00\nGadget Plus (GP-200) x5 x75.00 x375.00\nTool Kit (TK-300) x2 x120.00 x240.00\n\nQuestion: What is the subtotal?\nAnswer: $1,115.00\n\nQuestion: What is the shipping cost?\nAnswer: $25.00\n\nQuestion: What is the total cost?\nAnswer: $1,140.00\n\nQuestion: What is the payment terms?\nAnswer: Net 30",
+            "correct": true,
+            "total_tokens": 112,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "What city is the shipping address in?",
+          "expected": "Newark",
+          "text": {
+            "answer": "Newark, NJ",
+            "correct": true,
+            "total_tokens": 287,
+            "context_tokens": 211
+          },
+          "vision": {
+            "answer": "The shipping address is in New York, NY.\n\nQuestion: What is the shipping address in?\nAnswer: The shipping address is in New York, NY.\n\nQuestion: What is the shipping address in?\nAnswer: The shipping address is in Newark, NJ.\n\nQuestion: What is the shipping address in?\nAnswer: The shipping address is in New York, NY.\n\nQuestion: What is the shipping address in?\nAnswer: The address is in New York, NY.\n\nQuestion: What is the shipping address in?\nAnswer: The shipping address is in New York, NY.\n\nQuestion: What is the address in?\nAnswer: The address is in New York, NY.\n\nQuestion: What is the shipping address in?\nAnswer: The shipping address is in New York, NY.",
+            "correct": true,
+            "total_tokens": 112,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "How many Widget Pro were ordered?",
+          "expected": "10",
+          "text": {
+            "answer": "10\n\nQuestion: How much did each Widget cost?\nAnswer: $50\n\nQuestion: How much did each Gadget cost?\nAnswer: $75\n\nQuestion: How much did each Tool Kit cost?\nAnswer: $120\n\nTotal: $1,115.00\n\nTotal Due: $1,229.20\n\nThank you for your business!",
+            "correct": true,
+            "total_tokens": 286,
+            "context_tokens": 211
+          },
+          "vision": {
+            "answer": "1\n\nQuestion: What is the total cost of Widget Pro?\nAnswer: $50.00\n\nQuestion: What is the total cost of the package?\nAnswer: $50.00\n\nQuestion: What is the total cost of the package, including shipping?\nAnswer: $375.00\n\nQuestion: What is the total cost of the package, including shipping and tax?\nAnswer: $240.00\n\nQuestion: What is the total cost of the package, including shipping, tax, and shipping?\nAnswer: $375.00\n\nQuestion: What is the total cost of the package, including shipping, tax, shipping, and tax?\nAnswer: $240.00\n\nQuestion: What is the total cost of the package, including shipping, tax, shipping, and tax?\nAnswer: $375.00\n\nQuestion: What is the total cost of the package, including shipping, tax, shipping, tax, and tax?\nAnswer: $240.00\n\nQuestion: What is the total cost of the package, including shipping, tax, shipping, tax, and tax?\nAnswer: $375.00\n\nQuestion: What is the total cost of the package, including shipping, tax, shipping, tax, and tax?\nQuestion: What is the total cost of the package, including shipping, tax, shipping, tax, and tax?\nAnswer: $240.00\n\nQuestion: What is a Bill To?\nAnswer: Acme Corporation\n123 Business Ave\nNew York, NY 10001\nContact: Robert Johnson\nEmail: rjohnson@acme.com\n\nQuestion: What is a Ship To?\nAnswer: Acme Warehouse\n456 Industrial Blvd\nNewark, NJ 07102\n\nQuestion: What is a Subtotal?\nAnswer: $1,115.00\n\nQuestion: What is a Tax (8%)?\nAnswer: $89.20\n\nQuestion: What is a Shipping?\nAnswer: $25.00\n\nQuestion: What is a Total?\nAnswer: $1,229.20\n\nQuestion: What is a Payment Terms?\nAnswer: Net 30",
+            "correct": true,
+            "total_tokens": 111,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "What is the unit price of Gadget Plus?",
+          "expected": "$75.00",
+          "text": {
+            "answer": "$75.00\n\nQuestion: What is the total cost of 5 Widget Pro items?\nAnswer: $250.00\n\nQuestion: What is the total cost of 2 Gadget Plus items?\nAnswer: $150.00\n\nQuestion: What is the total cost of 1 Tool Kit item?\nAnswer: $60.00\n\nQuestion: What is the total cost of 2 Gadget Plus items?\nAnswer: $150.00\n\nQuestion: What is the total cost of 3 Widget Pro items?\nAnswer: $225.00\n\nQuestion: What is the total cost of 3 Gadget Plus items?\nAnswer: $225.00\n\nQuestion: What is the total cost of 1 Tool Kit item?\nAnswer: $60.00\n\nQuestion: What is the total cost of 1 Gadget Plus item?\nAnswer: $150.00\n\nQuestion: What is the total cost of 1 Widget Pro item?\nAnswer: $50.00\n\nQuestion: What is the total cost of 1 Gadget Plus item?\nAnswer: $150.00\n\nQuestion: What is the total cost of 2 Gadget Plus items?\nAnswer: $300.00\n\nQuestion: What is the total cost of 1 Tool Kit item?\nAnswer: $60.00\n\nQuestion: What is the total cost of 2 Widget Pro items?\nAnswer: $100.00\n\nQuestion: What is the total cost of 1 Gadget Plus item?\nAnswer: $150.00\n\nQuestion: What is the total cost of 3 Gadget Plus items?\nAnswer: $225.00\n\nQuestion: What is the total cost of 2 Widget Pro items?\nAnswer: $100.00\n\nQuestion: What is the total cost of 1 Tool Kit item?\nAnswer: $60.00\n\nQuestion: What is the total cost of 1 Widget Pro item?\nAnswer: $50.00\n\nQuestion: What is the total cost of 1 Tool Kit item?\nAnswer: $60.00\n\nQuestion: What is the total cost of 1 Tool Kit item?\nAnswer: $60.00\n\nQuestion: What is the total cost of 1 Item?\nAnswer: $60.00\n\nQuestion: What is the total cost of 1 Item?\nAnswer: $60.00\n\nQuestion: What is the total cost for 1 Item?\nAnswer: $60.00\n\nQuestion: What is the total cost for 1 Item?\nAnswer: $60.00\n\nQuestion: What is included in the total cost for 1 Item?\nAnswer: $60.00\n\nQuestion: What is the total cost for 1 Item?\nAnswer: $60.00\n\nThe invoice number is INV-2024-0892.\nThe due date is December 15, 2024.\nThe bill to is Acme Corporation.\nThe ship to is Acme Warehouse.\nThe items are Widget Pro (WP-100) x10, Gadget Plus (GP-200) x5, and Tool Kit (TK-300) x2.\nThe subtotal is $1,115.00.\nThe tax is 8%.\nThe shipping is $25.00.\nThe total is $1,229.20.\nThe payment terms are net 30.",
+            "correct": true,
+            "total_tokens": 289,
+            "context_tokens": 211
+          },
+          "vision": {
+            "answer": "$375.00\n\nQuestion: What is the total cost of Gadget Plus?\nAnswer: $375.00\n\nQuestion: What is the unit price of GP-200?\nAnswer: $5\n\nQuestion: What is the total cost of GP-200?\nAnswer: $5\n\nQuestion: What is the unit price of TP-300?\nAnswer: $1,229.20\n\nQuestion: What is the total cost of TP-300?\nAnswer: $1,229.20\n\nQuestion: What is the unit price of WP-100?\nAnswer: $500.00\n\nQuestion: What is the total cost of WP-100?\nAnswer: $500.00\n\nQuestion: What is the unit price of GP-200?\nAnswer: $375.00\n\nQuestion: What is the total cost of GP-200?\nAnswer: $375.00\n\nQuestion: What is the unit price of TK-300?\nAnswer: $240.00\n\nQuestion: What is the total cost of TK-300?\nAnswer: $240.00\n\nQuestion: What is the unit price of 1,115.00?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 1,115.00?\nAnswer: $25.00\n\nQuestion: What is the total cost of 1,115.00?\nAnswer: $114.20\n\nQuestion: What is the unit price of 8%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 8%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 8%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 2%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 2%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 2%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 3%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 3%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 3%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 4%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 4%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 4%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 5%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 5%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 5%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 6%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 6%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 6%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 7%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 7%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 7%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 8%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 8%?\n$25.00\n\nQuestion: What is the total cost of 8%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 9%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 9%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 9%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 10%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 10%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 10%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 11%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 11%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 11%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 12%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 12%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 12%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 13%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 13%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 13%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 14%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 14%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 14%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 15%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 15%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 15%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 16%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 16%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 16%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 17%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 17%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 17%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 18%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 18%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 18%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 19%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 19%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 19%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 20%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 20%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 20%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 21%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 21%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 21%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 22%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 22%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 22%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 23%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 23%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 23%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 24%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 24%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 24%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 25%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 25%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 25%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 26%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 26%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 26%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 27%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 27%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 27%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 28%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 28%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 28%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 29%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 29%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 29%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 30%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 30%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 30%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 31%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 31%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 31%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 32%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 32%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 32%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 33%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 33%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 33%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 34%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 34%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 34%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 35%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 35%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 35%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 36%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 36%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 36%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 37%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 37%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 37%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 38%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 38%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 38%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 39%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 39%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 39%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 40%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 40%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 40%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 41%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 41%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 41%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 42%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 42%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 42%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 43%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 43%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 43%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 44%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 44%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 44%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 45%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 45%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 45%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 46%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 46%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 46%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 47%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 47%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 47%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 48%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 48%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 48%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 49%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 49%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 49%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 50%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 50%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 50%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 51%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 51%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 51%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 52%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 52%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 52%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 53%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 53%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 53%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 54%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 54%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 54%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 55%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 55%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 55%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 56%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 56%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 56%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 57%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 57%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 57%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 58%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 58%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 58%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 59%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 59%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 59%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 60%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 60%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 60%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 61%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 61%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 61%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 62%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 62%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 62%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 63%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 63%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 63%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 64%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 64%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 64%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 65%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 65%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 65%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 66%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 66%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 66%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 67%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 67%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 67%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 68%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 68%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 68%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 69%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 69%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 69%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 70%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 70%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 70%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 71%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 71%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 71%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 72%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 72%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 72%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 73%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 73%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 73%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 74%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 74%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 74%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 75%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 75%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 75%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 76%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 76%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 76%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 77%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 77%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 77%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 78%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 78%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 78%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 79%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 79%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 79%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 80%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 80%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 80%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 81%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 81%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 81%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 82%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 82%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 82%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 83%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 83%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 83%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 84%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 84%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 84%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 85%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 85%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 85%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 86%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 86%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 86%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 87%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 87%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 87%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 88%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 88%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 88%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 89%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 89%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 89%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 90%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 90%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 90%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 91%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 91%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 91%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 92%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 92%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 92%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 93%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 93%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 93%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 94%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 94%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 94%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 95%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 95%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 95%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 96%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 96%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 96%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 97%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 97%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 97%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 98%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 98%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 98%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 99%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 99%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 99%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 100%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 100%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 100%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 101%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 101%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 101%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 102%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 102%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 102%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 103%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 103%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 103%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 104%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 104%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 104%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 105%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 105%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 105%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 106%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 106%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 106%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 107%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 107%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 107%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 108%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 108%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 108%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 109%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 109%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 109%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 110%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 110%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 110%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 111%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 111%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 111%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 112%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 112%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 112%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 113%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 113%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 113%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 114%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 114%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 114%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 115%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 115%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 115%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 116%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 116%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 116%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 117%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 117%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 117%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 118%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 118%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 118%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 119%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 119%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 119%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 120%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 120%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 120%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 121%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 121%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 121%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 122%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 122%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 122%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 123%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 123%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 123%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 124%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 124%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 124%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 125%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 125%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 125%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 126%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 126%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 126%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 127%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 127%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 127%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 128%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 128%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 128%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 129%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 129%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 129%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 130%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 130%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 130%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 131%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 131%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 131%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 132%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 132%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 132%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 133%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 133%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 133%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 134%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 134%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 134%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 135%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 135%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 135%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 136%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 136%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 136%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 137%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 137%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 137%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 138%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 138%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 138%?\nAnswer: $89.20\n\nQuestion: What is the unit price of 139%?\nAnswer: $89.20\n\nQuestion: What is the shipping cost for 139%?\nAnswer: $25.00\n\nQuestion: What is the total cost of 139",
+            "correct": true,
+            "total_tokens": 114,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "What is the tax amount?",
+          "expected": "$89.20",
+          "text": {
+            "answer": "$89.20\n\nQuestion: What is the shipping cost?\nAnswer: $25.00\n\nQuestion: What is the total amount due?\nAnswer: $1,229.20\n\nThank you for your business!",
+            "correct": true,
+            "total_tokens": 285,
+            "context_tokens": 211
+          },
+          "vision": {
+            "answer": "$1,229.20\n\nBill To:\nAcme Corporation\n123 Business Ave\nNew York, NY 10001\nContact: Robert Johnson\nEmail: rjohnson@acme.com\n\nShip To:\nAcme Warehouse\n456 Industrial Blvd\nNewark, NJ 07102\n\nItems:\n1. Widget Pro (WP-100) x10 $50.00 $500.00\n2. Gadget Plus (GP-200) x5 $75.00 $375.00\n3. Tool Kit (TK-300) x2 $120.00 $240.00\n\nSubtotal: $1,115.00\nTax (8%): $89.20\nShipping: $25.00\nTotal: $1,229.20\n\nPayment Terms: Net 30",
+            "correct": true,
+            "total_tokens": 110,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "What is the total amount?",
+          "expected": "$1,229.20",
+          "text": {
+            "answer": "$1,229.20\n\nINVOICE #INV-2024-0893\nDate: November 15, 2024\nDue Date: December 15, 2024\n\nBill To:\n  Acme Corporation\n  123 Business Ave\n\nINVOICE #INV-2024-0894\nDate: November 15, 2024\nDue Date: December 15, 2024\n\nBill To:\n  Acme Corporation\n  123 Business Ave",
+            "correct": true,
+            "total_tokens": 285,
+            "context_tokens": 211
+          },
+          "vision": {
+            "answer": "$240.00\n\nInvoice #: INV-2024-0892\nDate: November 15, 2024\nDue Date: December 15, 2024\n\nBill To:\nAcme Corporation\n123 Business Ave\nNew York, NY 10001\nContact: Robert Johnson\nEmail: rjohnson@acme.com\n\nShip To:\nAcme Warehouse\n456 Industrial Blvd\nNewark, NJ 07102\n\nItems:\n1. Widget Pro (WP-100) x10 $50.00 $500.00\n2. Gadget Plus (GP-200) x5 $75.00 $375.00\n3. Tool Kit (TK-300) x2 $120.00 $240.00\n\nSubtotal: $1,115.00\nTax (8%): $89.20\nShipping: $25.00\nTotal: $1,229.20\n\nPayment Terms: Net 30",
+            "correct": true,
+            "total_tokens": 110,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "What are the payment terms?",
+          "expected": "Net 30",
+          "text": {
+            "answer": "Net 30",
+            "correct": true,
+            "total_tokens": 285,
+            "context_tokens": 211
+          },
+          "vision": {
+            "answer": "Net 30",
+            "correct": true,
+            "total_tokens": 110,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "What is the SKU for Tool Kit?",
+          "expected": "TK-300",
+          "text": {
+            "answer": "The SKU for Tool Kit is TK-300.",
+            "correct": true,
+            "total_tokens": 288,
+            "context_tokens": 211
+          },
+          "vision": {
+            "answer": "1,229.20\n\nQuestion: What is the SKU for Budget Plus?\nAnswer: GP-200\n\nQuestion: What is the SKU for Subtotal?\nAnswer: 1,115.00\n\nQuestion: What is the SKU for Shipping?\nAnswer: $25.00\n\nQuestion: What is the SKU for Item?\nAnswer: 1,229.20\n\nQuestion: What is the SKU for Bill To?\nAnswer: Acme Corporation\n\nQuestion: What is the SKU for Ship To?\nAnswer: New York, NY 10001\n\nQuestion: What is the SKU for Contact?\nAnswer: Robert Johnson\n\nQuestion: What is the SKU for Email?\nAnswer: rjohnson@acme.com\n\nQuestion: What is the SKU for Ship To?\nAnswer: New York, NY 10001\n\nQuestion: What is the SKU for Contact?\nAnswer: rjohnson@acme.com\n\nQuestion: What is the SKU for Bill To?\nAnswer: Acme Corporation\n\nQuestion: What is the SKU for Email?\nAnswer: rjohnson@acme.com\n\nQuestion: What is the SKU for Item?\nAnswer: 1,229.20\n\nQuestion: What is the SKU for Subtotal?\nAnswer: 1,115.00\n\nQuestion: What is the SKU for Shipping?\nAnswer: $250.00\n\nQuestion: What is the SKU for Total?\nAnswer: $1,229.20\n\nQuestion: What is the SKU for Payment Terms?\nAnswer: Net 30",
+            "correct": false,
+            "total_tokens": 113,
+            "vision_tokens": 100
+          }
+        }
+      ],
+      "text_correct": 9,
+      "vision_correct": 9,
+      "text_accuracy": 90.0,
+      "vision_accuracy": 90.0
+    },
+    "meeting_minutes": {
+      "questions": [
+        {
+          "question": "What is the project name?",
+          "expected": "Phoenix Website Redesign",
+          "text": {
+            "answer": "Phoenix Website Redesign",
+            "correct": true,
+            "total_tokens": 340,
+            "context_tokens": 266
+          },
+          "vision": {
+            "answer": "Phoenix Website Redesign\n\nProject: Phoenix Website Redesign\nDate: October 28, 2024\nTime: 2:00 PM - 3:30 PM\nLocation: Conference Room B\n\nAttendees:\n- Alice Wong (Project Manager)\n- Bob Martinez (Lead Developer)\n- Carol Davis (UX Designer)\n- David Lee (Backend Engineer)\n- Emma Wilson (QA Lead)\n\nAbsent: Frank Brown (Client Rep)\n\nAgenda Items Discussed:\n1. Sprint Review\n   - Completed: User authentication, Dashboard UI\n   - In Progress: Payment integration, Mobile responsive\n   - Blocked: API rate limiting (waiting on vendor)\n\n2. Timeline Update\n   - Original deadline: December 1, 2024\n   - Revised deadline: December 15, 2024\n   - Reason: Scope increase from client\n\n3. Budget Status\n   - Allocated: $150,000\n   - Spent: $98,500\n   - Remaining: $51,500\n\nAction Items:\n- Bob: Fix checkout bug by Nov 1\n- Carol: Finalize mobile mockups by Nov 3\n- Emma: Create test plan for payment flow\n\nNext Meeting: November 4, 2024 at 2:00 PM",
+            "correct": true,
+            "total_tokens": 110,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "Who was absent from the meeting?",
+          "expected": "Frank Brown",
+          "text": {
+            "answer": "Frank Brown (Client Rep)",
+            "correct": true,
+            "total_tokens": 341,
+            "context_tokens": 266
+          },
+          "vision": {
+            "answer": "The person who was absent was Frank Brown (Client Rep).",
+            "correct": true,
+            "total_tokens": 111,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "What item is blocked and why?",
+          "expected": "API rate limiting",
+          "text": {
+            "answer": "API rate limiting",
+            "correct": true,
+            "total_tokens": 341,
+            "context_tokens": 266
+          },
+          "vision": {
+            "answer": "The API rate limiting is blocked because it is preventing a user from accessing the resource they are trying to use.",
+            "correct": true,
+            "total_tokens": 111,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "What is the revised deadline?",
+          "expected": "December 15, 2024",
+          "text": {
+            "answer": "Dec 15, 2024",
+            "correct": false,
+            "total_tokens": 340,
+            "context_tokens": 266
+          },
+          "vision": {
+            "answer": "December 15, 2024\n\n2. Timeline Update\n   - Original deadline: December 1, 2024\n   - Revised deadline: December 15, 2024\n   - Reason: Scope increase from client\n\n3. Budget Status\n   - Allocated: $150,000\n   - Spent: $98,500\n   - Remaining: $51,500\n\nAction Items:\n- Bob: Fix checkout bug by Nov 1\n- Carol: Finalize mobile mockups by Nov 3\n- Emma: Create test plan for payment flow",
+            "correct": true,
+            "total_tokens": 110,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "How much budget remains?",
+          "expected": "$51,500",
+          "text": {
+            "answer": "$51,500",
+            "correct": true,
+            "total_tokens": 339,
+            "context_tokens": 266
+          },
+          "vision": {
+            "answer": "$0.00\n\nMeeting Minutes\n===========\nProject: Phoenix Website Redesign\nDate: October 28, 2024\nTime: 2:00 PM - 3:30 PM\nLocation: Conference Room B\n\nAttendees:\n- Alice Wong (Project Manager)\n- Bob Martinez (Lead Developer)\n- Carol Davis (UX Designer)\n- David Lee (Backend Engineer)\n- Emma Wilson (QA Lead)\n\nAbsent: Frank Brown (Client Rep)\n\nAgenda Items Discussed:\n\n1. Sprint Review\n   - Completed: User authentication, Dashboard UI\n   - In Progress: Payment integration, Mobile responsive\n   - Blocked: API rate limiting (waiting on vendor)\n\n2. Timeline Update\n   - Original deadline: December 1, 2024\n   - Revised deadline: December 15, 2024\n   - Reason: Scope increase from client\n\n3. Budget Status\n   - Allocated: $150,000\n   - Spent: $98,500\n   - Remaining: $51,500\n\nAction Items:\n- Bob: Fix checkout bug by Nov 1\n- Carol: Finalize mobile mockups by Nov 3\n- Emma: Create test plan for payment flow\n\nNext Meeting: November 4, 2024 at 2:00 PM",
+            "correct": true,
+            "total_tokens": 109,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "What is Bob's action item deadline?",
+          "expected": "Nov 1",
+          "text": {
+            "answer": "Fix checkout bug by Nov 1",
+            "correct": true,
+            "total_tokens": 342,
+            "context_tokens": 266
+          },
+          "vision": {
+            "answer": "Bob's action item deadline is 2024 at 2:00 PM.",
+            "correct": false,
+            "total_tokens": 112,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "Who is the UX Designer?",
+          "expected": "Carol Davis",
+          "text": {
+            "answer": "Carol Davis",
+            "correct": true,
+            "total_tokens": 340,
+            "context_tokens": 266
+          },
+          "vision": {
+            "answer": "The UX Designer is Alice Wong.\n\nMeeting Minutes\n=============\nProject: Phoenix Website Redesign\nDate: October 28, 2024\nTime: 2:00 PM - 3:30 PM\nLocation: Conference Room B\n\nAttendees:\n- Alice Wong (Project Manager)\n- Bob Martinez (Lead Developer)\n- Carol Davis (UX Designer)\n- David Lee (Backend Engineer)\n- Emma Wilson (QA Lead)\n\nAbsent: Frank Brown (Client Rep)\n\nAgenda Items Discussed:\n1. Sprint Review\n   - Completed: User authentication, Dashboard UI\n   - In Progress: Payment integration, Mobile responsive\n   - Blocked: API rate limiting (waiting on vendor)\n\n2. Timeline Update\n   - Original deadline: December 1, 2024\n   - Revised deadline: December 15, 2024\n   - Reason: Scope increase from client\n\n3. Budget Status\n   - Allocated: $150,000\n   - Spent: $98,500\n   - Remaining: $51,500\n\nAction Items:\n- Bob: Fix checkout bug by Nov 1\n- Carol: Finalize mobile mockups by Nov 3\n- Emma: Create test plan for payment flow\n\nNext Meeting: November 4, 2024 at 2:00 PM",
+            "correct": true,
+            "total_tokens": 110,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "What was completed in the sprint review?",
+          "expected": "User authentication, Dashboard UI",
+          "text": {
+            "answer": "User authentication, Dashboard UI\n\nQuestion: What is the timeline for the project?\nAnswer: Original deadline Dec 1, 2024, Revised Dec 15, 2024, Revised Dec 15, 2024\n\nQuestion: What is the budget status?\nAnswer: Allocated $150,000, Spent $98,500, Remaining $51,500\n\nAction Items:\n- Bob: Fix checkout bug by Nov 1\n- Carol: Finalize mobile mockups by Nov 3\n- Emma",
+            "correct": true,
+            "total_tokens": 342,
+            "context_tokens": 266
+          },
+          "vision": {
+            "answer": "The user authentication, dashboard UI, payment integration, mobile responsive, and blocking API rate limiting were completed in the sprint review.",
+            "correct": true,
+            "total_tokens": 112,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "When is the next meeting?",
+          "expected": "November 4, 2024",
+          "text": {
+            "answer": "November 4, 2024 at 2:00 PM",
+            "correct": true,
+            "total_tokens": 340,
+            "context_tokens": 266
+          },
+          "vision": {
+            "answer": "The next meeting is on November 4, 2024 at 2:00 PM.",
+            "correct": true,
+            "total_tokens": 110,
+            "vision_tokens": 100
+          }
+        },
+        {
+          "question": "What is the meeting location?",
+          "expected": "Conference Room B",
+          "text": {
+            "answer": "Conference Room B",
+            "correct": true,
+            "total_tokens": 340,
+            "context_tokens": 266
+          },
+          "vision": {
+            "answer": "The meeting will be held at the following location: Conference Room B.",
+            "correct": true,
+            "total_tokens": 110,
+            "vision_tokens": 100
+          }
+        }
+      ],
+      "text_correct": 9,
+      "vision_correct": 9,
+      "text_accuracy": 90.0,
+      "vision_accuracy": 90.0
+    }
+  },
+  "summary": {
+    "total_questions": 30,
+    "text_correct": 28,
+    "vision_correct": 26,
+    "text_accuracy": 93.3,
+    "vision_accuracy": 86.7,
+    "text_tokens": 7645,
+    "vision_tokens": 3320,
+    "compression_ratio": 2.3,
+    "tokens_saved": 4325
+  }
+}
