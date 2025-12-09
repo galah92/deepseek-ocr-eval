@@ -329,6 +329,16 @@ uv run python experiment/quality_experiment.py --mode base --num-articles 10 --q
 | 70bd0370 | 4,168 | 0/3 (0%) | 1/3 (33%) |
 | d9088e2a | 4,535 | 2/3 (67%) | 1/3 (33%) |
 
+### Critical Perspective
+
+Recent work by [Lee et al. (2024)](https://arxiv.org/abs/2512.03643) argues that optical context compression is essentially a "bad autoencoder" - a suboptimal approach compared to properly-trained text compression methods. Their key claims:
+
+1. **Optical compression loses to text autoencoders** - Well-designed text compression achieves better quality at similar compression ratios
+2. **Inefficient information bottleneck** - Vision encoders weren't optimized for text compression
+3. **Computational overhead** - Requires rendering + vision encoding vs. direct text compression
+
+Our experiments partially support this critique: vision accuracy only matches text with large mode (400 tokens, 13x compression). However, we also observe cases where vision outperforms truncated text when documents overflow context limits, suggesting optical compression may still have niche utility for extremely long documents.
+
 ---
 
 ## References
@@ -338,6 +348,7 @@ uv run python experiment/quality_experiment.py --mode base --num-articles 10 --q
 - [Fox Benchmark](https://github.com/ucaslcl/Fox)
 - [OmniDocBench](https://github.com/opendatalab/OmniDocBench)
 - [QuALITY Dataset](https://arxiv.org/abs/2112.08608)
+- [Optical Context Compression Critique (Lee et al.)](https://arxiv.org/abs/2512.03643)
 
 ## Citation
 
