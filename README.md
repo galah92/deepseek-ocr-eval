@@ -205,17 +205,34 @@ Each experiment targets a gap in Lee et al.'s analysis, seeking conditions where
 uv run python eval.py noise --noise-type typos --mode large --num-articles 3 --questions-per-article 3 --noise-levels "0,0.05,0.10,0.15"
 ```
 
-#### Experiment B: Structured Data (Tables & Code)
+#### Experiment B: Structured Data (Tables) — **IN PROGRESS**
 
 **Gap addressed:** Lee et al. tested prose. Structured data has 2D semantics that linearization destroys.
 
+**Preliminary Results** (10 tables, aggregation-style questions from DataBench):
+
+| Condition | Accuracy | Notes |
+|-----------|----------|-------|
+| **Vision** | **10.0%** (1/10) | Only correct answer on "unique quality ratings" |
+| Markdown | 0.0% (0/10) | Often returned counts from visible rows only |
+| Linearized | 0.0% (0/10) | Model confused by row-by-row format |
+
+**Limitation:** DataBench questions require aggregation over full datasets (e.g., "How many complaints in Queens?" = 23,110), but we only show 20-row samples. Questions are unanswerable from visible data alone.
+
+**Next step:** Cell-lookup questions (e.g., "What is the value in row 5, column 'Name'?") that CAN be answered from visible data, testing true spatial reasoning.
+
 *   **Hypothesis:** For tasks requiring spatial reasoning ("What is in row 3, column 2?"), vision preserves structure that text flattening loses.
 *   **Method:**
-    - Dataset: TableBench or WikiTableQuestions
-    - Task: Structural queries (cell lookup, row/column operations) vs semantic queries
+    - Dataset: DataBench tables (20-row samples)
+    - Task: Cell-lookup structural queries
     - Compare: Vision vs text (markdown table) vs text (linearized)
-*   **Success criterion:** Vision outperforms text on structural queries while matching on semantic queries.
+*   **Success criterion:** Vision outperforms text on structural queries.
 *   **Contribution:** Identifies task categories where modality matters.
+
+```bash
+# Run table experiment
+uv run python eval.py tables --mode large --num-tables 15
+```
 
 #### Experiment C: Augmented Rendering (Visual Metadata Injection)
 

@@ -439,6 +439,167 @@ def inject_noise(
         raise ValueError(f"Unknown noise type: {noise_type}")
 
 
+# ============================================================================
+# Table Rendering Functions (Experiment B: Structured Data)
+# ============================================================================
+
+
+def table_to_markdown(header: list[str], rows: list[list[str]]) -> str:
+    """Convert table to markdown format.
+
+    Example output:
+    | Col1 | Col2 | Col3 |
+    |------|------|------|
+    | a    | b    | c    |
+    """
+    # Calculate column widths for alignment
+    col_widths = [len(h) for h in header]
+    for row in rows:
+        for i, cell in enumerate(row):
+            if i < len(col_widths):
+                col_widths[i] = max(col_widths[i], len(str(cell)))
+
+    # Build markdown table
+    lines = []
+    # Header
+    header_line = "| " + " | ".join(h.ljust(col_widths[i]) for i, h in enumerate(header)) + " |"
+    lines.append(header_line)
+    # Separator
+    sep_line = "|" + "|".join("-" * (w + 2) for w in col_widths) + "|"
+    lines.append(sep_line)
+    # Rows
+    for row in rows:
+        row_cells = []
+        for i, cell in enumerate(row):
+            width = col_widths[i] if i < len(col_widths) else len(str(cell))
+            row_cells.append(str(cell).ljust(width))
+        lines.append("| " + " | ".join(row_cells) + " |")
+
+    return "\n".join(lines)
+
+
+def table_to_linearized(header: list[str], rows: list[list[str]]) -> str:
+    """Convert table to linearized text format (row-by-row).
+
+    Example output:
+    Row 1: Col1=a, Col2=b, Col3=c
+    Row 2: Col1=d, Col2=e, Col3=f
+    """
+    lines = []
+    for i, row in enumerate(rows):
+        cells = []
+        for j, cell in enumerate(row):
+            col_name = header[j] if j < len(header) else f"Col{j+1}"
+            cells.append(f"{col_name}={cell}")
+        lines.append(f"Row {i+1}: " + ", ".join(cells))
+    return "\n".join(lines)
+
+
+def render_table_to_image(
+    header: list[str],
+    rows: list[list[str]],
+    output_path: str,
+    max_width: int = 1400,
+    padding: int = 20,
+    cell_padding: int = 10,
+) -> None:
+    """Render table to an image with grid lines.
+
+    Uses dark mode settings (same as text rendering) for consistency.
+    """
+    # Calculate column widths based on content
+    col_widths = []
+    for i, h in enumerate(header):
+        max_cell_width = FONT.getbbox(h)[2]
+        for row in rows:
+            if i < len(row):
+                cell_width = FONT.getbbox(str(row[i]))[2]
+                max_cell_width = max(max_cell_width, cell_width)
+        col_widths.append(max_cell_width + 2 * cell_padding)
+
+    # Ensure table fits in max_width
+    total_width = sum(col_widths) + 2 * padding
+    if total_width > max_width:
+        scale = (max_width - 2 * padding) / sum(col_widths)
+        col_widths = [int(w * scale) for w in col_widths]
+        total_width = sum(col_widths) + 2 * padding
+
+    row_height = FONT_SIZE + 2 * cell_padding
+    total_height = (len(rows) + 1) * row_height + 2 * padding  # +1 for header
+
+    img = Image.new("RGB", (total_width, total_height), color=BG_COLOR)
+    draw = ImageDraw.Draw(img)
+
+    # Draw header
+    x = padding
+    y = padding
+    for i, h in enumerate(header):
+        # Draw cell background (slightly lighter for header)
+        draw.rectangle([x, y, x + col_widths[i], y + row_height], outline="#555555")
+        # Draw text centered in cell
+        text_bbox = FONT.getbbox(h)
+        text_x = x + (col_widths[i] - text_bbox[2]) // 2
+        text_y = y + cell_padding
+        draw.text((text_x, text_y), h, font=FONT, fill="#ffffff")  # White for header
+        x += col_widths[i]
+
+    # Draw rows
+    for row_idx, row in enumerate(rows):
+        y = padding + (row_idx + 1) * row_height
+        x = padding
+        for i, cell in enumerate(row):
+            if i >= len(col_widths):
+                break
+            # Draw cell border
+            draw.rectangle([x, y, x + col_widths[i], y + row_height], outline="#555555")
+            # Draw text
+            text_bbox = FONT.getbbox(str(cell))
+            text_x = x + cell_padding
+            text_y = y + cell_padding
+            draw.text((text_x, text_y), str(cell), font=FONT, fill=FG_COLOR)
+            x += col_widths[i]
+
+    img.save(output_path)
+
+
+def normalize_answer(answer: str) -> str:
+    """Normalize answer for comparison (lowercase, strip, handle common variations)."""
+    s = answer.lower().strip()
+    # Remove common punctuation
+    s = s.rstrip('.')
+    # Handle numeric variations
+    s = s.replace(',', '')
+    return s
+
+
+def answers_match(predicted: str, gold_answers: list[str]) -> bool:
+    """Check if predicted answer matches any gold answer."""
+    pred_norm = normalize_answer(predicted)
+
+    # Handle boolean answers specially
+    boolean_true = {'true', 'yes', '1', 'correct', 'right'}
+    boolean_false = {'false', 'no', '0', 'incorrect', 'wrong', 'none'}
+
+    for gold in gold_answers:
+        gold_norm = normalize_answer(gold)
+
+        # Exact match
+        if gold_norm == pred_norm:
+            return True
+
+        # Boolean matching
+        if gold_norm in boolean_true and pred_norm in boolean_true:
+            return True
+        if gold_norm in boolean_false and pred_norm in boolean_false:
+            return True
+
+        # Containment check
+        if gold_norm in pred_norm or pred_norm in gold_norm:
+            return True
+
+    return False
+
+
 def run_inference(
     prompt: str,
     image_path: str | Path,
@@ -1250,6 +1411,224 @@ def cmd_noise(args: argparse.Namespace) -> None:
     )
 
 
+def generate_cell_lookup_qa(header: list[str], rows: list[list[str]], seed: int = 42) -> tuple[str, str]:
+    """Generate a cell lookup question that can be answered from visible data.
+
+    Returns: (question, answer) tuple
+    """
+    random.seed(seed)
+    row_idx = random.randint(0, len(rows) - 1)
+    col_idx = random.randint(0, len(header) - 1)
+
+    question = f"What is the value in row {row_idx + 1}, column '{header[col_idx]}'?"
+    answer = str(rows[row_idx][col_idx])
+    return question, answer
+
+
+def cmd_tables(args: argparse.Namespace) -> None:
+    """Run table QA experiment comparing vision vs text table representations.
+
+    Tests Hypothesis 2: Visual projection preserves 2D structure better than linearization.
+
+    Uses synthetic cell-lookup questions that CAN be answered from visible data,
+    testing spatial reasoning rather than aggregation.
+
+    Compares three conditions:
+    1. Vision: Table rendered as image
+    2. Markdown: Table as markdown text
+    3. Linearized: Table as row-by-row text (Row 1: Col1=val, Col2=val, ...)
+    """
+    import pandas as pd
+
+    data_dir, results_dir = setup_experiment_dirs("tables")
+
+    logger.info("Loading DataBench dataset for table sources...")
+    try:
+        qa_ds = load_dataset("cardiffnlp/databench", name="qa", split="train")
+    except Exception as e:
+        logger.error(f"Error loading DataBench dataset: {e}")
+        return
+
+    # Load diverse tables (we'll generate our own questions)
+    tables = []
+    seen_datasets = set()
+
+    for item in qa_ds:
+        ds_id = item["dataset"]
+        if ds_id in seen_datasets:
+            continue
+
+        # Load the table sample
+        try:
+            df = pd.read_parquet(f"hf://datasets/cardiffnlp/databench/data/{ds_id}/sample.parquet")
+            # Accept any table with 3-20 rows, 3-8 cols (sample size is 20 rows)
+            if 3 <= len(df) <= 20 and 3 <= len(df.columns) <= 8:
+                # Convert all values to strings for rendering
+                rows = [[str(cell) for cell in row] for row in df.values.tolist()]
+                header = list(df.columns)
+
+                # Generate cell lookup question
+                question, answer = generate_cell_lookup_qa(header, rows, seed=len(tables))
+
+                tables.append({
+                    "id": ds_id,
+                    "question": question,
+                    "answer": answer,
+                    "answer_type": "cell_lookup",
+                    "header": header,
+                    "rows": rows,
+                })
+                seen_datasets.add(ds_id)
+        except Exception as e:
+            logger.warning(f"Failed to load table {ds_id}: {e}")
+            continue
+
+        if len(tables) >= args.num_tables:
+            break
+
+    if len(tables) < args.num_tables:
+        logger.warning(f"Only found {len(tables)} suitable tables (requested {args.num_tables})")
+
+    model, tokenizer = load_model()
+    settings = MODE_SETTINGS[args.mode]
+
+    results = {
+        "mode": args.mode,
+        "tables": [],
+        "summary": {},
+    }
+
+    stats = {
+        "vision_correct": 0,
+        "markdown_correct": 0,
+        "linearized_correct": 0,
+        "total": 0,
+    }
+
+    logger.info(f"TABLE EXPERIMENT: Mode={args.mode}, Tables={len(tables)}")
+    logger.info("=" * 70)
+
+    for i, item in enumerate(tables):
+        table_id = item["id"]
+        question = item["question"]
+        gold_answer = item["answer"]
+        gold_answers = [gold_answer]  # Wrap in list for answers_match
+        header = item["header"]
+        rows = item["rows"]
+
+        logger.info(f"\nTable {i+1}/{len(tables)}: {table_id}")
+        logger.info(f"  Size: {len(rows)} rows × {len(header)} cols")
+        logger.info(f"  Q: {question[:60]}...")
+        logger.info(f"  Gold: {gold_answer}")
+
+        # Create table hash for caching
+        table_hash = hashlib.md5(f"{table_id}_{len(rows)}_{len(header)}".encode()).hexdigest()[:8]
+
+        # Render table to image
+        img_path = data_dir / f"table_{table_hash}.png"
+        if not img_path.exists():
+            render_table_to_image(header, rows, str(img_path))
+
+        # Prepare text representations
+        markdown_table = table_to_markdown(header, rows)
+        linearized_table = table_to_linearized(header, rows)
+
+        # Common prompt - clearer instruction for table QA
+        prompt_suffix = f"\n\nBased on the table above, answer the following question.\nQuestion: {question}\nAnswer:"
+
+        # 1. Vision condition
+        vision_prompt = f"<image>\nThis is a data table.{prompt_suffix}"
+        vision_output, _, _ = run_inference(
+            vision_prompt, str(img_path), mode=args.mode, model=model, tokenizer=tokenizer
+        )
+        vision_correct = answers_match(vision_output.strip(), gold_answers)
+
+        # 2. Markdown condition
+        markdown_prompt = f"<image>\n{markdown_table}{prompt_suffix}"
+        markdown_output, _, _ = run_inference(
+            markdown_prompt, "", mode="text", model=model, tokenizer=tokenizer
+        )
+        markdown_correct = answers_match(markdown_output.strip(), gold_answers)
+
+        # 3. Linearized condition
+        linearized_prompt = f"<image>\n{linearized_table}{prompt_suffix}"
+        linearized_output, _, _ = run_inference(
+            linearized_prompt, "", mode="text", model=model, tokenizer=tokenizer
+        )
+        linearized_correct = answers_match(linearized_output.strip(), gold_answers)
+
+        # Log results
+        v_mark = "✓" if vision_correct else "✗"
+        m_mark = "✓" if markdown_correct else "✗"
+        l_mark = "✓" if linearized_correct else "✗"
+        logger.info(f"  Vision: {vision_output[:30]}... {v_mark}")
+        logger.info(f"  Markdown: {markdown_output[:30]}... {m_mark}")
+        logger.info(f"  Linearized: {linearized_output[:30]}... {l_mark}")
+
+        # Update stats
+        stats["vision_correct"] += int(vision_correct)
+        stats["markdown_correct"] += int(markdown_correct)
+        stats["linearized_correct"] += int(linearized_correct)
+        stats["total"] += 1
+
+        results["tables"].append({
+            "id": table_id,
+            "question": question,
+            "gold_answer": gold_answer,
+            "rows": len(rows),
+            "cols": len(header),
+            "vision_output": vision_output.strip(),
+            "markdown_output": markdown_output.strip(),
+            "linearized_output": linearized_output.strip(),
+            "vision_correct": vision_correct,
+            "markdown_correct": markdown_correct,
+            "linearized_correct": linearized_correct,
+        })
+
+    # Summary
+    n = stats["total"]
+    if n > 0:
+        vision_acc = stats["vision_correct"] / n * 100
+        markdown_acc = stats["markdown_correct"] / n * 100
+        linearized_acc = stats["linearized_correct"] / n * 100
+
+        results["summary"] = {
+            "total_tables": n,
+            "vision_accuracy": round(vision_acc, 1),
+            "markdown_accuracy": round(markdown_acc, 1),
+            "linearized_accuracy": round(linearized_acc, 1),
+            "vision_correct": stats["vision_correct"],
+            "markdown_correct": stats["markdown_correct"],
+            "linearized_correct": stats["linearized_correct"],
+        }
+
+        logger.info("\n" + "=" * 70)
+        logger.info("TABLE EXPERIMENT RESULTS")
+        logger.info("=" * 70)
+        logger.info(f"Total tables: {n}")
+        logger.info("")
+        logger.info(f"{'Condition':<15} | {'Accuracy':>10} | {'Correct':>10}")
+        logger.info("-" * 45)
+        logger.info(f"{'Vision':<15} | {vision_acc:>9.1f}% | {stats['vision_correct']:>5}/{n}")
+        logger.info(f"{'Markdown':<15} | {markdown_acc:>9.1f}% | {stats['markdown_correct']:>5}/{n}")
+        logger.info(f"{'Linearized':<15} | {linearized_acc:>9.1f}% | {stats['linearized_correct']:>5}/{n}")
+        logger.info("")
+
+        # Analysis
+        if vision_acc > markdown_acc and vision_acc > linearized_acc:
+            logger.info("✓ Vision outperforms both text representations")
+        elif vision_acc > linearized_acc:
+            logger.info("✓ Vision beats linearized text (structure preserved)")
+        elif markdown_acc > linearized_acc:
+            logger.info("Markdown beats linearized (some structure preserved in text)")
+        else:
+            logger.info("No clear winner between conditions")
+
+    save_experiment_results(
+        results, results_dir, f"tables_{args.mode}_{args.num_tables}tables.json"
+    )
+
+
 def cmd_finewiki(args: argparse.Namespace) -> None:
     """Run FineWiki language modeling experiment comparing text vs vision continuation."""
     data_dir, results_dir = setup_experiment_dirs("finewiki")
@@ -1815,6 +2194,19 @@ def main() -> None:
         help="Also apply noise to question and options (default: article only)"
     )
 
+    # Tables experiment command (Experiment B)
+    tables_parser = subparsers.add_parser(
+        "tables", help="Run WikiTableQuestions experiment (Experiment B)"
+    )
+    tables_parser.add_argument(
+        "--mode", type=str, default="large", choices=EXPERIMENT_MODES,
+        help="Vision mode for table images"
+    )
+    tables_parser.add_argument(
+        "--num-tables", type=int, default=20,
+        help="Number of tables to evaluate"
+    )
+
     # Reproduce command
     reproduce_parser = subparsers.add_parser(
         "reproduce", help="Run a suite of experiments to reproduce paper results"
@@ -1839,6 +2231,8 @@ def main() -> None:
         cmd_truncation(args)
     elif args.command == "noise":
         cmd_noise(args)
+    elif args.command == "tables":
+        cmd_tables(args)
     elif args.command == "reproduce":
         cmd_reproduce(args)
     else:
