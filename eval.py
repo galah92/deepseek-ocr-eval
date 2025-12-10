@@ -67,21 +67,42 @@ MODE_SETTINGS: dict[str, ModeSettings] = {
 _model: AutoModel | None = None
 _tokenizer: AutoTokenizer | None = None
 
-
-# Default monospace font path per platform
-MONO_FONT_PATH: dict[str, str] = {
+# Fallback monospace font paths per platform (if fc-match unavailable)
+_FALLBACK_MONO_FONTS: dict[str, str] = {
     "Linux": "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
     "Darwin": "/System/Library/Fonts/Menlo.ttc",
     "Windows": "C:/Windows/Fonts/consola.ttf",
 }
 
 
+def _find_monospace_font() -> str | None:
+    """Find the system's default monospace font path."""
+    # On Linux, use fontconfig's fc-match to find the default monospace font
+    if platform.system() == "Linux":
+        import subprocess
+
+        try:
+            result = subprocess.run(
+                ["fc-match", "monospace", "-f", "%{file}"],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+        except FileNotFoundError:
+            pass
+
+    # Fall back to hardcoded paths for each platform
+    return _FALLBACK_MONO_FONTS.get(platform.system())
+
+
 def get_font(size: int = 14) -> FreeTypeFont:
-    """Load the platform's default monospace font, or fall back to PIL default."""
-    font_path = MONO_FONT_PATH.get(platform.system())
+    """Load the system's default monospace font, or fall back to PIL default."""
+    font_path = _find_monospace_font()
     if font_path:
         try:
-            return ImageFont.truetype(font_path, size)
+            font = ImageFont.truetype(font_path, size)
+            return font
         except (OSError, IOError):
             pass
     print("Warning: No monospace font found, using default font", file=sys.stderr)
@@ -121,6 +142,10 @@ def load_model() -> tuple[AutoModel, AutoTokenizer]:
 # ============================================================================
 
 
+# Track whether we've logged font info (only log once per session)
+_font_info_logged = False
+
+
 def render_text_to_image(
     text: str,
     output_path: str,
@@ -136,7 +161,18 @@ def render_text_to_image(
     Returns:
         Tuple of (image_width, image_height, num_lines).
     """
+    global _font_info_logged
     font = get_font(font_size)
+
+    # Log rendering configuration once per session
+    if not _font_info_logged:
+        font_family, font_style = font.getname()
+        font_path = font.path if hasattr(font, "path") else "unknown"
+        print(
+            f"[Render config] font={font_family} ({font_style}), size={font_size}pt, "
+            f"bg={bg_color}, fg={fg_color}, path={font_path}"
+        )
+        _font_info_logged = True
 
     lines = []
     for paragraph in text.split("\n"):
