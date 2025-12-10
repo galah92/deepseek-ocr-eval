@@ -4,20 +4,72 @@ from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 import argparse
 
-FONT_CONFIGS = {
-    'mono': [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
-    ],
-    'serif': [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
-    ],
-    'sans': [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-    ],
-}
+import platform
+import sys
+
+def _get_platform_fonts():
+    """Get font paths based on the current platform."""
+    system = platform.system()
+
+    if system == 'Linux':
+        return {
+            'mono': [
+                "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+                "/usr/share/fonts/truetype/freefont/FreeMono.ttf",
+            ],
+            'serif': [
+                "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+                "/usr/share/fonts/truetype/freefont/FreeSerif.ttf",
+            ],
+            'sans': [
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+            ],
+        }
+    elif system == 'Darwin':  # macOS
+        return {
+            'mono': [
+                "/System/Library/Fonts/Menlo.ttc",
+                "/System/Library/Fonts/Monaco.ttf",
+                "/Library/Fonts/Courier New.ttf",
+            ],
+            'serif': [
+                "/System/Library/Fonts/Times.ttc",
+                "/Library/Fonts/Times New Roman.ttf",
+                "/System/Library/Fonts/Georgia.ttf",
+            ],
+            'sans': [
+                "/System/Library/Fonts/Helvetica.ttc",
+                "/Library/Fonts/Arial.ttf",
+                "/System/Library/Fonts/SFNSText.ttf",
+            ],
+        }
+    elif system == 'Windows':
+        return {
+            'mono': [
+                "C:/Windows/Fonts/consola.ttf",
+                "C:/Windows/Fonts/cour.ttf",
+                "C:/Windows/Fonts/lucon.ttf",
+            ],
+            'serif': [
+                "C:/Windows/Fonts/times.ttf",
+                "C:/Windows/Fonts/georgia.ttf",
+                "C:/Windows/Fonts/cambria.ttc",
+            ],
+            'sans': [
+                "C:/Windows/Fonts/arial.ttf",
+                "C:/Windows/Fonts/calibri.ttf",
+                "C:/Windows/Fonts/segoeui.ttf",
+            ],
+        }
+    else:
+        # Fallback for unknown systems
+        return {'mono': [], 'serif': [], 'sans': []}
+
+FONT_CONFIGS = _get_platform_fonts()
 
 SIZE_CONFIGS = {'small': 14, 'medium': 20, 'large': 28}
 

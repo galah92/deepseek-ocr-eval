@@ -30,10 +30,32 @@ MODE_SETTINGS = {
     'large': {'base_size': 1280, 'image_size': 1280, 'vision_tokens': 400},
 }
 
-FONT_PATHS = [
-    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
-]
+import platform
+
+def _get_mono_font_paths():
+    """Get monospace font paths based on the current platform."""
+    system = platform.system()
+    if system == 'Linux':
+        return [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeMono.ttf",
+        ]
+    elif system == 'Darwin':  # macOS
+        return [
+            "/System/Library/Fonts/Menlo.ttc",
+            "/System/Library/Fonts/Monaco.ttf",
+            "/Library/Fonts/Courier New.ttf",
+        ]
+    elif system == 'Windows':
+        return [
+            "C:/Windows/Fonts/consola.ttf",
+            "C:/Windows/Fonts/cour.ttf",
+            "C:/Windows/Fonts/lucon.ttf",
+        ]
+    return []
+
+FONT_PATHS = _get_mono_font_paths()
 
 
 def get_font(size: int = 14):
