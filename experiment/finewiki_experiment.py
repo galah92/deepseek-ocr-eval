@@ -16,7 +16,6 @@ import sys
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 from datasets import load_dataset
-import random
 
 sys.stdout.reconfigure(line_buffering=True)
 
