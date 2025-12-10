@@ -8,6 +8,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from datasets import load_dataset
 from matplotlib import font_manager
 from PIL import Image, ImageDraw, ImageFont
 from PIL.ImageFont import FreeTypeFont
@@ -375,8 +376,6 @@ def _infer_with_vision(
 
 def cmd_quality(args: argparse.Namespace) -> None:
     """Run QuALITY long-document QA experiment comparing text vs vision accuracy."""
-    from datasets import load_dataset
-
     root_dir = Path(__file__).parent
     data_dir = root_dir / ".cache" / "quality"
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -512,8 +511,6 @@ def cmd_quality(args: argparse.Namespace) -> None:
 
 def cmd_finewiki(args: argparse.Namespace) -> None:
     """Run FineWiki language modeling experiment comparing text vs vision continuation."""
-    from datasets import load_dataset
-
     root_dir = Path(__file__).parent
     data_dir = root_dir / ".cache" / "finewiki"
     data_dir.mkdir(parents=True, exist_ok=True)
