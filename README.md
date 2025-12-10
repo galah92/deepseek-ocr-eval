@@ -290,48 +290,101 @@ uv run python experiment/quality_experiment.py --mode base --num-articles 10 --q
 # Results saved to experiment/results/quality_experiment_*.json
 ```
 
-### Results (3 articles, 9 questions)
+### Results (10 articles, 50 questions)
 
 #### Mode Comparison
 
 | Mode | Vision Tokens | Text Accuracy | Vision Accuracy | Compression |
 |------|---------------|---------------|-----------------|-------------|
-| Tiny | 64 | 44.4% (4/9) | 22.2% (2/9) | 39.7x |
-| Base | 256 | 44.4% (4/9) | 33.3% (3/9) | 18.3x |
-| **Large** | 400 | 44.4% (4/9) | **44.4% (4/9)** | 13.0x |
+| **Tiny** | 64 | 36.0% (18/50) | 26.0% (13/50) | **38.51x** |
+| Base | 256 | 36.0% (18/50) | 30.0% (15/50) | 17.74x |
+| **Large** | 400 | 36.0% (18/50) | **34.0% (17/50)** | 12.63x |
 
-**Key finding**: Large mode achieves accuracy parity with text (44.4%) while using **13x fewer tokens**!
+**Key finding**: Large mode achieves near-parity with text (34% vs 36%) while using **12.6x fewer tokens**!
 
-#### Base Mode Detailed Results
+#### Large Mode Detailed Results
 
 | Condition | Accuracy | Tokens Used | Compression |
 |-----------|----------|-------------|-------------|
-| Text | 44.4% (4/9) | 58,566 | -- |
-| Vision | 33.3% (3/9) | 3,204 | **18.3x** |
+| Text | 36.0% (18/50) | 315,795 | -- |
+| Vision | 34.0% (17/50) | 25,000 | **12.63x** |
 
 ### Key Observations
 
-1. **13x compression with no accuracy loss** - Large mode vision matches text accuracy while using 13x fewer tokens
+1. **12.6x compression with minimal accuracy loss** - Large mode vision achieves 34% vs text's 36% while using 12.6x fewer tokens (only 2% accuracy drop)
 
-2. **Compression vs accuracy trade-off** - Higher compression ratios (tiny: 39.7x) come with lower accuracy (22.2%), but large mode (13x) maintains parity
+2. **Consistent compression vs accuracy trade-off**:
+   - Tiny (38.5x compression): 26% vision accuracy (10% drop from text)
+   - Base (17.7x compression): 30% vision accuracy (6% drop from text)
+   - Large (12.6x compression): 34% vision accuracy (2% drop from text)
 
-3. **Both conditions struggle with these questions** - The 44% text accuracy shows even raw text hits the 8192 token context limit, truncating important information
+3. **Text accuracy plateaus at 36%** - This consistent text accuracy across all modes confirms that documents exceed the 8192 token context limit, causing truncation
 
-4. **Vision can outperform text** - On Article 2 (70bd0370), text got 0/3 while large-mode vision got 1/3, demonstrating vision encoding can preserve more information when text overflows context
+4. **Vision scales predictably** - Higher resolution modes (more vision tokens) recover more information, with near-linear improvement
 
-5. **Optimal mode selection** - For maximum compression use tiny/base; for accuracy parity use large mode
+5. **Optimal mode selection** - For maximum compression use tiny/base; for near-accuracy parity use large mode
 
-### Per-Article Breakdown (Large Mode)
+---
 
-| Article | Words | Text Accuracy | Vision Accuracy |
-|---------|-------|---------------|-----------------|
-| 50cd3c12 | 4,888 | 2/3 (67%) | 2/3 (67%) |
-| 70bd0370 | 4,168 | 0/3 (0%) | 1/3 (33%) |
-| d9088e2a | 4,535 | 2/3 (67%) | 1/3 (33%) |
+## FineWiki Language Modeling Experiment
+
+Following the methodology of [Lee et al. (2024)](https://arxiv.org/abs/2512.03643), we tested vision tokens on the [FineWiki](https://huggingface.co/datasets/HuggingFaceFW/finewiki) dataset to evaluate language modeling performance.
+
+### Methodology
+
+1. Load Wikipedia articles from FineWiki (English subset)
+2. Split each article: first 500 words as context, next 50 words as target continuation
+3. **Text condition**: Pass raw text context + ask model to continue
+4. **Vision condition**: Render context as image + ask model to continue
+5. Measure word overlap between prediction and target continuation
+
+### Running the FineWiki Experiment
+
+```bash
+# Run on 20 articles with base mode
+uv run python experiment/finewiki_experiment.py --mode base --num-articles 20
+
+# Results saved to experiment/results/finewiki_experiment_*.json
+```
+
+### Results (20 articles, base mode)
+
+| Metric | Text Condition | Vision Condition |
+|--------|----------------|------------------|
+| **Avg Word Overlap** | 7.9% | **14.5%** |
+| First Word Match | 5.0% | 0.0% |
+| Tokens Used | 15,709 | 6,120 |
+| **Compression Ratio** | -- | **2.57x** |
+
+### Key Findings
+
+1. **Vision outperforms text on overlap metric** - Vision achieves 14.5% word overlap vs text's 7.9%, nearly 2x better
+
+2. **Both conditions struggle with true continuation** - Low overlap scores indicate the model tends to paraphrase/summarize rather than predict exact next words
+
+3. **Vision generates more coherent continuations** - Vision often reproduces the context structure and continues naturally, while text frequently produces empty outputs
+
+4. **Text produces more empty outputs** - Many text predictions are empty (""), while vision usually generates content (often restating context then extending)
+
+5. **Different failure modes**:
+   - **Text**: Often generates nothing or unrelated content
+   - **Vision**: Tends to OCR the rendered context first, then attempt continuation
+
+### Example Outputs
+
+**Article: "1778 in music"**
+- Target: "Little Organ Mass - Symphony No.54 in G major..."
+- Text prediction: "" (empty)
+- Vision prediction: Correctly OCRs the context, then continues with relevant musical works
+
+**Article: "1847 in the United States"**
+- Target: List of Lieutenant Governors
+- Text prediction: "" (empty)
+- Vision prediction: Reproduces context structure, achieves 78.8% word overlap
 
 ### Critical Perspective
 
-Recent work by [Lee et al. (2024)](https://arxiv.org/abs/2512.03643) titled "Optical Context Compression Is Just (Bad) Autoencoding" critiques vision-based context compression. **Important**: they argue there are *better ways* to compress context, not that vision tokens can't encode information at all.
+This experiment relates directly to the Lee et al. (2024) critique:
 
 **Their key findings:**
 1. **Simpler methods win** - Mean pooling and learned hierarchical encoders match or beat vision at the same compression ratios
@@ -344,10 +397,10 @@ Recent work by [Lee et al. (2024)](https://arxiv.org/abs/2512.03643) titled "Opt
 - These achieve better compression/quality trade-offs without rendering overhead
 
 **How our experiments relate:**
-- Our "text" baseline is essentially truncation (context overflow), which the paper predicts should be competitive
-- Vision only matches truncated text at large mode (13x compression) - consistent with their critique
+- Our QuALITY results show vision matches truncated text at large mode (12.6x compression) - consistent with their critique
+- Our FineWiki results show vision actually outperforms text on continuation, but this may be due to the model's tendency to OCR and paraphrase rather than true language modeling
 - We did not compare against text-based compression methods (mean pooling, learned encoders), which the paper suggests would outperform vision
-- The cases where vision beats text (Article 70bd0370) may reflect different information preservation patterns rather than vision being superior
+- The evaluation metric (word overlap) favors approaches that reproduce context, which vision does naturally
 
 ---
 
@@ -358,6 +411,7 @@ Recent work by [Lee et al. (2024)](https://arxiv.org/abs/2512.03643) titled "Opt
 - [Fox Benchmark](https://github.com/ucaslcl/Fox)
 - [OmniDocBench](https://github.com/opendatalab/OmniDocBench)
 - [QuALITY Dataset](https://arxiv.org/abs/2112.08608)
+- [FineWiki Dataset](https://huggingface.co/datasets/HuggingFaceFW/finewiki)
 - [Optical Context Compression Critique (Lee et al.)](https://arxiv.org/abs/2512.03643)
 
 ## Citation
