@@ -48,6 +48,60 @@ uv run python eval.py quality --mode base --num-articles 10
 uv run python eval.py finewiki --mode base --num-articles 20
 ```
 
+## Hypotheses & Theoretical Framework
+
+This evaluation suite is designed to test two core hypotheses regarding optical context compression:
+
+### Hypothesis 1: Image as Context Compression (The "Zip" Theory)
+
+*   **Claim:** Textual information can be "zipped" into an image representation (vision tokens) and decoded or used as context by an LLM with minimal information loss, achieving high compression ratios (10x-100x).
+*   **Testing Method:**
+    *   **Flow 1 (Text-to-Image):** We render raw text into images using optimal settings (Dark Mode, Monospace) and feed them to the model.
+    *   **Metric:** We measure if `Vision Accuracy` $\approx$ `Text Accuracy` while `Vision Tokens` $\ll$ `Text Tokens`.
+    *   **Experiments:** `QuALITY` (QA) and `FineWiki` (Language Modeling) use this flow to isolate the compression efficiency from image quality issues.
+
+### Hypothesis 2: Visual Projection Improves Data Usage (The "Modality" Theory)
+
+*   **Claim:** Projecting information into the visual modality allows the model to utilize the data more effectively than linear text tokens, particularly for structured data where spatial relationships matter.
+*   **Reasoning:**
+    *   **Structure:** Images preserve 2D layouts (tables, forms, code blocks) that are flattened in text.
+    *   **Attention:** Visual encoders may attend to salient features (headers, bold text) more naturally.
+*   **Testing Method:**
+    *   **Flow 2 (Image-to-Text):** We feed real-world document images (scans, PDFs) directly to the model.
+    *   **Experiments:** `OmniDocBench` (and standard `OCR`) use this flow to validate the model's robustness and ability to leverage visual cues in complex layouts.
+
+## Reproducing Paper Results
+
+To verify the claims of the DeepSeek-OCR paper, this suite includes a reproduction command that runs all three key experiments:
+
+1.  **OmniDocBench (OCR):** Evaluates OCR precision and compression on diverse real-world documents.
+2.  **QuALITY (QA):** Tests long-document comprehension using vision vs. text context.
+3.  **FineWiki (Language Modeling):** Measures next-sentence prediction capability.
+
+### Running Reproduction
+
+Run the full suite (Note: Requires high VRAM, e.g., A100 40GB+ or multiple GPUs):
+
+```bash
+uv run python eval.py reproduce
+```
+
+Run a fast verification (1 document per task, skips memory-intensive modes):
+
+```bash
+uv run python eval.py reproduce --fast
+```
+
+### OmniDocBench
+
+You can also run the OmniDocBench experiment individually:
+
+```bash
+uv run python eval.py omnidocbench --mode base --num-articles 10
+```
+
+*Note: This will automatically download the necessary annotations and images from Hugging Face.*
+
 ## Evaluation Methodology
 
 ### Compression Ratio

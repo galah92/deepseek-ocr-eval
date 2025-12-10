@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from datasets import load_dataset
+from huggingface_hub import hf_hub_download
 from matplotlib import font_manager
 from PIL import Image, ImageDraw, ImageFont
 from transformers import AutoModel, AutoTokenizer
@@ -39,6 +40,7 @@ TMP_BLANK_IMAGE = Path("/tmp/blank_32x32.png")
 # Token overhead for prompts in experiments
 PROMPT_TOKEN_OVERHEAD = 100
 CONTINUATION_TOKEN_OVERHEAD = 50
+MODEL_CONTEXT_LIMIT = 8192  # DeepSeek-OCR context window
 
 
 @dataclass(frozen=True)
@@ -433,7 +435,21 @@ def cmd_quality(args: argparse.Namespace) -> None:
         if not img_path.exists():
             render_text_to_image(article, str(img_path))
 
-        article_results = {"questions": [], "text_correct": 0, "vision_correct": 0}
+        # Calculate article token count once
+        article_tokens = len(tokenizer.encode(article, add_special_tokens=False))
+        exceeds_context = article_tokens > MODEL_CONTEXT_LIMIT
+
+        logger.info(
+            f"  Article tokens: {article_tokens}, Exceeds {MODEL_CONTEXT_LIMIT} limit: {exceeds_context}"
+        )
+
+        article_results = {
+            "questions": [],
+            "text_correct": 0,
+            "vision_correct": 0,
+            "article_tokens": article_tokens,
+            "exceeds_context_limit": exceeds_context,
+        }
 
         for qa in questions:
             question, options, expected = qa["question"], qa["options"], qa["answer"]
@@ -478,6 +494,20 @@ def cmd_quality(args: argparse.Namespace) -> None:
                 f"    Text: {text_pred} {'✓' if text_correct else '✗'}, Vision: {vision_pred} {'✓' if vision_correct else '✗'}"
             )
 
+            # Store per-question results
+            article_results["questions"].append(
+                {
+                    "question": question[:100],
+                    "expected": expected,
+                    "text_pred": text_pred,
+                    "vision_pred": vision_pred,
+                    "text_correct": text_correct,
+                    "vision_correct": vision_correct,
+                    "vision_beat_text": vision_correct and not text_correct,
+                    "text_beat_vision": text_correct and not vision_correct,
+                }
+            )
+
             if text_correct:
                 article_results["text_correct"] += 1
                 stats["text_correct"] += 1
@@ -501,6 +531,23 @@ def cmd_quality(args: argparse.Namespace) -> None:
         else 0
     )
 
+    # Analyze overflow hypothesis
+    overflow_stats = {"vision_beat_text": 0, "text_beat_vision": 0, "total": 0}
+    no_overflow_stats = {"vision_beat_text": 0, "text_beat_vision": 0, "total": 0}
+
+    for article_hash, article_data in results["articles"].items():
+        target = (
+            overflow_stats
+            if article_data["exceeds_context_limit"]
+            else no_overflow_stats
+        )
+        for q in article_data["questions"]:
+            target["total"] += 1
+            if q["vision_beat_text"]:
+                target["vision_beat_text"] += 1
+            if q["text_beat_vision"]:
+                target["text_beat_vision"] += 1
+
     results["summary"] = {
         "total_questions": n,
         "text_accuracy": text_acc,
@@ -508,9 +555,39 @@ def cmd_quality(args: argparse.Namespace) -> None:
         "compression_ratio": round(compression, 2),
     }
 
+    # Add overflow analysis to summary
+    results["overflow_analysis"] = {
+        "articles_exceeding_limit": sum(
+            1 for a in results["articles"].values() if a["exceeds_context_limit"]
+        ),
+        "articles_within_limit": sum(
+            1 for a in results["articles"].values() if not a["exceeds_context_limit"]
+        ),
+        "context_limit": MODEL_CONTEXT_LIMIT,
+        "overflow_questions": overflow_stats,
+        "no_overflow_questions": no_overflow_stats,
+    }
+
     logger.info(
         f"RESULTS: Text={text_acc}%, Vision={vision_acc}%, Compression={compression:.1f}x"
     )
+
+    # Log overflow analysis
+    logger.info("OVERFLOW ANALYSIS:")
+    logger.info(
+        f"  Articles exceeding {MODEL_CONTEXT_LIMIT} tokens: {results['overflow_analysis']['articles_exceeding_limit']}"
+    )
+    logger.info(
+        f"  Articles within limit: {results['overflow_analysis']['articles_within_limit']}"
+    )
+    if overflow_stats["total"] > 0:
+        logger.info(
+            f"  Overflow questions - Vision beat text: {overflow_stats['vision_beat_text']}/{overflow_stats['total']}, Text beat vision: {overflow_stats['text_beat_vision']}/{overflow_stats['total']}"
+        )
+    if no_overflow_stats["total"] > 0:
+        logger.info(
+            f"  No-overflow questions - Vision beat text: {no_overflow_stats['vision_beat_text']}/{no_overflow_stats['total']}, Text beat vision: {no_overflow_stats['text_beat_vision']}/{no_overflow_stats['total']}"
+        )
 
     save_experiment_results(
         results, results_dir, f"quality_{args.mode}_{args.num_articles}articles.json"
@@ -658,6 +735,336 @@ def cmd_finewiki(args: argparse.Namespace) -> None:
         )
 
 
+def cmd_omnidocbench(args: argparse.Namespace) -> None:
+    """Run OmniDocBench evaluation (Benchmark used in DeepSeek-OCR paper)."""
+    data_dir, results_dir = setup_experiment_dirs("omnidocbench")
+
+    # 1. Ensure Annotation JSON exists
+    json_path = data_dir / "OmniDocBench.json"
+    if not json_path.exists():
+        # Check if it was downloaded to root in previous steps
+        root_json = Path("OmniDocBench.json")
+        if root_json.exists():
+            root_json.rename(json_path)
+        else:
+            logger.info("Downloading OmniDocBench.json...")
+            # We use direct URL as it's not a standard HF file in the repo root usually,
+            # but we found it via direct wget earlier.
+            # Ideally we use hf_hub_download if it's in the repo.
+            # The previous wget worked from https://huggingface.co/datasets/opendatalab/OmniDocBench/resolve/main/OmniDocBench.json
+            try:
+                hf_hub_download(
+                    repo_id="opendatalab/OmniDocBench",
+                    filename="OmniDocBench.json",
+                    repo_type="dataset",
+                    local_dir=str(data_dir),
+                )
+            except Exception as e:
+                logger.error(f"Failed to download OmniDocBench.json: {e}")
+                return
+
+    # 2. Load Annotations
+    logger.info("Loading OmniDocBench annotations...")
+    with open(json_path, "r") as f:
+        dataset = json.load(f)
+
+    # 3. Filter/Select Items
+    if args.num_articles > 0:
+        dataset = dataset[: args.num_articles]
+
+    logger.info(f"Evaluating on {len(dataset)} documents from OmniDocBench")
+
+    model, tokenizer = load_model()
+
+    results = {"mode": args.mode, "documents": [], "summary": {}}
+    stats = {
+        "edit_distance": 0,
+        "normalized_ed": 0,
+        "vision_tokens": 0,
+        "output_tokens": 0,
+        "total": 0,
+    }
+
+    logger.info(f"\nOMNIDOCBENCH EXPERIMENT: Mode={args.mode}, Docs={len(dataset)}")
+
+    for i, item in enumerate(dataset):
+        # Extract Ground Truth
+        # Concatenate text blocks sorted by order
+        blocks = item.get("layout_dets", [])
+        blocks = [b for b in blocks if not b.get("ignore", False)]
+        blocks.sort(key=lambda x: x.get("order") or 0)
+        ground_truth = "\n".join(b.get("text", "") for b in blocks)
+
+        # Get Image
+        image_filename = item.get("page_info", {}).get("image_path")
+        if not image_filename:
+            logger.warning(f"Skipping item {i}: No image_path found")
+            continue
+
+        local_img_path = data_dir / "images" / image_filename
+        if not local_img_path.exists():
+            # Download image on demand
+            try:
+                hf_hub_download(
+                    repo_id="opendatalab/OmniDocBench",
+                    filename=f"images/{image_filename}",
+                    repo_type="dataset",
+                    local_dir=str(data_dir),
+                )
+            except Exception as e:
+                logger.error(f"Failed to download image {image_filename}: {e}")
+                continue
+
+        logger.info(f"\nDocument {i + 1}: {image_filename}")
+
+        # Run Inference
+        output, vision_tokens, output_tokens = run_inference(
+            prompt="<image>\nFree OCR.",  # Standard OCR prompt
+            image_path=local_img_path,
+            mode=args.mode,
+            model=model,
+            tokenizer=tokenizer,
+        )
+
+        # Metrics
+        metrics = calculate_edit_distance(output, ground_truth)
+        compression = output_tokens / vision_tokens if vision_tokens > 0 else 0
+
+        logger.info(f"  Vision Tokens: {vision_tokens}")
+        logger.info(f"  Compression: {compression:.1f}x")
+        logger.info(f"  Precision: {metrics['precision']}%")
+
+        stats["edit_distance"] += metrics["edit_distance"]
+        stats["normalized_ed"] += metrics["normalized_ed"]
+        stats["vision_tokens"] += vision_tokens
+        stats["output_tokens"] += output_tokens
+        stats["total"] += 1
+
+        results["documents"].append(
+            {
+                "image": image_filename,
+                "vision_tokens": vision_tokens,
+                "output_tokens": output_tokens,
+                "compression": round(compression, 2),
+                "precision": metrics["precision"],
+                "edit_distance": metrics["edit_distance"],
+            }
+        )
+
+    # Summary
+    n = stats["total"]
+    if n > 0:
+        avg_ned = stats["normalized_ed"] / n
+        avg_precision = (1 - avg_ned) * 100
+        avg_compression = (
+            stats["output_tokens"] / stats["vision_tokens"]
+            if stats["vision_tokens"] > 0
+            else 0
+        )
+
+        results["summary"] = {
+            "total_documents": n,
+            "avg_precision": round(avg_precision, 2),
+            "avg_normalized_ed": round(avg_ned, 4),
+            "avg_compression": round(avg_compression, 2),
+        }
+
+        logger.info(
+            f"\nRESULTS: Precision={avg_precision:.2f}%, Compression={avg_compression:.1f}x"
+        )
+
+        save_experiment_results(
+            results,
+            results_dir,
+            f"omnidocbench_{args.mode}_{n}docs.json",
+        )
+
+
+def cmd_reproduce(args: argparse.Namespace) -> None:
+    """Run a suite of experiments to reproduce paper results."""
+    modes = ["tiny", "base", "large"]
+
+    # Adjust parameters for fast run
+    num_articles_quality = 1 if args.fast else 10
+    num_articles_finewiki = 1 if args.fast else 20
+
+    logger.info("=" * 60)
+    logger.info("REPRODUCING DEEPSEEK-OCR PAPER RESULTS")
+    logger.info("=" * 60)
+    logger.info(f"Fast mode: {args.fast}")
+    logger.info(f"Modes to test: {modes}")
+
+    summary_results = {"quality": {}, "finewiki": {}, "omnidocbench": {}}
+
+    # 0. OmniDocBench Experiments (The actual paper benchmark)
+    logger.info("\n" + "=" * 60)
+    logger.info("STARTING OMNIDOCBENCH EXPERIMENTS (OCR Benchmark)")
+    logger.info("=" * 60)
+
+    # Use a smaller number for reproduction if fast, but paper used full set.
+    # The full set is 1355. Fast=1, Normal=10 (to save time, or 50?)
+    # Let's match the other experiments
+    num_docs_omni = 1 if args.fast else 10
+
+    for mode in modes:
+        if args.fast and mode == "large" and "omnidocbench" in summary_results:
+            logger.info(
+                f"Skipping OmniDocBench '{mode}' mode in fast run to avoid OOM."
+            )
+            continue
+        logger.info(f"\nRunning OmniDocBench experiment for mode: {mode}")
+
+        omni_args = argparse.Namespace(
+            mode=mode, num_articles=num_docs_omni, command="omnidocbench"
+        )
+
+        cmd_omnidocbench(omni_args)
+
+        data_dir, results_dir = setup_experiment_dirs("omnidocbench")
+        result_file = results_dir / f"omnidocbench_{mode}_{num_docs_omni}docs.json"
+
+        if result_file.exists():
+            with open(result_file, "r") as f:
+                data = json.load(f)
+                summary_results["omnidocbench"][mode] = data["summary"]
+
+    # 1. QuALITY Experiments
+    logger.info("\n" + "=" * 60)
+    logger.info("STARTING QUALITY EXPERIMENTS (Long-Document QA)")
+    logger.info("=" * 60)
+
+    for mode in modes:
+        logger.info(f"\nRunning QuALITY experiment for mode: {mode}")
+
+        # Create a namespace for the quality command
+        quality_args = argparse.Namespace(
+            mode=mode,
+            num_articles=num_articles_quality,
+            questions_per_article=5,
+            command="quality",
+        )
+
+        # Run the experiment
+        cmd_quality(quality_args)
+
+        # Load the results to aggregate
+        data_dir, results_dir = setup_experiment_dirs("quality")
+        result_file = (
+            results_dir / f"quality_{mode}_{num_articles_quality}articles.json"
+        )
+
+        if result_file.exists():
+            with open(result_file, "r") as f:
+                data = json.load(f)
+                summary_results["quality"][mode] = data["summary"]
+
+    # 2. FineWiki Experiments
+    logger.info("\n" + "=" * 60)
+    logger.info("STARTING FINEWIKI EXPERIMENTS (Language Modeling)")
+    logger.info("=" * 60)
+
+    for mode in modes:
+        logger.info(f"\nRunning FineWiki experiment for mode: {mode}")
+
+        # Create a namespace for the finewiki command
+        finewiki_args = argparse.Namespace(
+            mode=mode,
+            num_articles=num_articles_finewiki,
+            context_words=500,
+            continuation_words=50,
+            command="finewiki",
+        )
+
+        # Run the experiment
+        cmd_finewiki(finewiki_args)
+
+        # Load the results to aggregate
+        data_dir, results_dir = setup_experiment_dirs("finewiki")
+        result_file = (
+            results_dir / f"finewiki_{mode}_{num_articles_finewiki}articles.json"
+        )
+
+        if result_file.exists():
+            with open(result_file, "r") as f:
+                data = json.load(f)
+                summary_results["finewiki"][mode] = data["summary"]
+
+        # 3. Print Summary Report
+
+        logger.info("\n" + "=" * 60)
+
+        logger.info("FINAL REPRODUCTION REPORT")
+
+        logger.info("=" * 60)
+
+        # OmniDocBench Table
+
+        logger.info("\nOmniDocBench Results (OCR Accuracy):")
+
+        logger.info(
+            f"{'Mode':<10} | {'Vision Tokens':<15} | {'Precision':<10} | {'Compression':<12}"
+        )
+
+        logger.info("-" * 55)
+
+        for mode in modes:
+            res = summary_results["omnidocbench"].get(mode, {})
+
+            if res:
+                tokens = MODE_SETTINGS[mode].tokens
+
+                prec = f"{res.get('avg_precision', 0)}%"
+
+                comp = f"{res.get('avg_compression', 0)}x"
+
+                logger.info(
+                    f"{mode.capitalize():<10} | {tokens:<15} | {prec:<10} | {comp:<12}"
+                )
+
+        # QuALITY Table
+
+        logger.info("\nQuALITY Results (Text vs Vision Accuracy):")
+
+        logger.info(
+            f"{'Mode':<10} | {'Vision Tokens':<15} | {'Text Acc':<10} | {'Vision Acc':<12} | {'Compression':<12}"
+        )
+
+        logger.info("-" * 70)
+
+    for mode in modes:
+        res = summary_results["quality"].get(mode, {})
+        if res:
+            tokens = MODE_SETTINGS[mode].tokens
+            text_acc = f"{res.get('text_accuracy', 0)}%"
+            vis_acc = f"{res.get('vision_accuracy', 0)}%"
+            comp = f"{res.get('compression_ratio', 0)}x"
+            logger.info(
+                f"{mode.capitalize():<10} | {tokens:<15} | {text_acc:<10} | {vis_acc:<12} | {comp:<12}"
+            )
+
+    # FineWiki Table
+    logger.info("\nFineWiki Results (Language Modeling Overlap):")
+    logger.info(
+        f"{'Mode':<10} | {'Vision Tokens':<15} | {'Text Avg':<10} | {'Vision Avg':<12} | {'Compression':<12}"
+    )
+    logger.info("-" * 70)
+
+    for mode in modes:
+        res = summary_results["finewiki"].get(mode, {})
+        if res:
+            tokens = MODE_SETTINGS[mode].tokens
+            text_avg = f"{res.get('text_avg_overlap', 0):.3f}"
+            vis_avg = f"{res.get('vision_avg_overlap', 0):.3f}"
+            comp = f"{res.get('compression_ratio', 0)}x"
+            logger.info(
+                f"{mode.capitalize():<10} | {tokens:<15} | {text_avg:<10} | {vis_avg:<12} | {comp:<12}"
+            )
+
+    # Save summary
+    _, results_dir = setup_experiment_dirs("reproduction")
+    save_experiment_results(summary_results, results_dir, "reproduction_summary.json")
+
+
 def main() -> None:
     """Main function to parse arguments and execute the specified command."""
     parser = argparse.ArgumentParser(
@@ -706,6 +1113,27 @@ def main() -> None:
     finewiki_parser.add_argument("--context-words", type=int, default=500)
     finewiki_parser.add_argument("--continuation-words", type=int, default=50)
 
+    # OmniDocBench command
+    omni_parser = subparsers.add_parser(
+        "omnidocbench", help="Run OmniDocBench evaluation"
+    )
+    omni_parser.add_argument(
+        "--mode", type=str, default="base", choices=EXPERIMENT_MODES
+    )
+    omni_parser.add_argument(
+        "--num-articles", type=int, default=10, help="Number of documents to evaluate"
+    )
+
+    # Reproduce command
+    reproduce_parser = subparsers.add_parser(
+        "reproduce", help="Run a suite of experiments to reproduce paper results"
+    )
+    reproduce_parser.add_argument(
+        "--fast",
+        action="store_true",
+        help="Run with fewer articles for quick verification",
+    )
+
     args = parser.parse_args()
 
     if args.command == "ocr":
@@ -714,6 +1142,10 @@ def main() -> None:
         cmd_quality(args)
     elif args.command == "finewiki":
         cmd_finewiki(args)
+    elif args.command == "omnidocbench":
+        cmd_omnidocbench(args)
+    elif args.command == "reproduce":
+        cmd_reproduce(args)
     else:
         parser.print_help()
 
