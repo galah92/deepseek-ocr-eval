@@ -45,3 +45,6 @@ uv.lock
 
 # Model cache
 .cache/
+
+# Log files
+*.log

@@ -1,9 +1,10 @@
 """Evaluate DeepSeek-OCR compression ratio and accuracy on document images."""
 
 import argparse
-import logging
 import hashlib
 import json
+import logging
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -11,6 +12,13 @@ from datasets import load_dataset
 from matplotlib import font_manager
 from PIL import Image, ImageDraw, ImageFont
 from transformers import AutoModel, AutoTokenizer
+
+# Suppress specific transformers warning
+warnings.filterwarnings(
+    "ignore",
+    message="`do_sample` is set to `False`. However, `temperature` is set to `0.0`",
+    category=UserWarning,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,6 +29,7 @@ logging.basicConfig(
         logging.FileHandler("deepseek_ocr.log", mode="w"),
     ],
 )
+logging.getLogger("transformers").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
 # Temporary paths for experiments
@@ -50,6 +59,8 @@ MODE_SETTINGS: dict[str, ModeSettings] = {
     "gundam": ModeSettings(1024, 640, True, None),
 }
 
+EXPERIMENT_MODES = ["tiny", "small", "base", "large"]
+
 # Global model cache
 _model: AutoModel | None = None
 _tokenizer: AutoTokenizer | None = None
@@ -75,9 +86,11 @@ def load_model() -> tuple[AutoModel, AutoTokenizer]:
         attn_implementation="eager",
         trust_remote_code=True,
         use_safetensors=True,
-        torch_dtype=torch.bfloat16,
+        torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
     )
-    _model = _model.eval().cuda()
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    logger.info(f"Using device: {device}")
+    _model = _model.eval().to(device)
     return _model, _tokenizer
 
 
@@ -88,8 +101,7 @@ FG_COLOR = "#d4d4d4"
 FONT = ImageFont.truetype(MONO_FONT_PATH, FONT_SIZE)
 
 logger.info(
-    f"[Render config] font={FONT.getname()[0]}, size={FONT_SIZE}pt, "
-    f"bg={BG_COLOR}, fg={FG_COLOR}, path={MONO_FONT_PATH}"
+    f"font={FONT.getname()[0]}, size={FONT_SIZE}pt, bg={BG_COLOR}, fg={FG_COLOR}"
 )
 
 
@@ -221,32 +233,63 @@ def calculate_edit_distance(output: str, ground_truth: str) -> dict[str, int | f
     }
 
 
-def run_ocr(
-    image_path: str, mode: str, prompt: str = "<image>\nFree OCR."
+def run_inference(
+    prompt: str,
+    image_path: str | Path,
+    mode: str = "text",
+    model: AutoModel | None = None,
+    tokenizer: AutoTokenizer | None = None,
 ) -> tuple[str, int, int]:
-    """Run OCR inference using the DeepSeek-OCR model.
+    """Run inference using the DeepSeek-OCR model.
+
+    Args:
+        prompt: The input prompt.
+        image_path: Path to the image file.
+        mode: Resolution mode key or 'text' for text-only (blank image).
+        model: Pre-loaded model (optional).
+        tokenizer: Pre-loaded tokenizer (optional).
 
     Returns:
-        Tuple of (ocr_output, vision_tokens, output_tokens).
+        Tuple of (output_text, vision_tokens_count, output_tokens_count).
     """
-    model, tokenizer = load_model()
-    settings = MODE_SETTINGS[mode]
+    if model is None or tokenizer is None:
+        model, tokenizer = load_model()
 
-    img = Image.open(image_path)
-    width, height = img.size
+    if mode == "text":
+        base_size = 512
+        image_size = 512
+        crop_mode = False
+        vision_tokens = 0
+        final_image_path = _ensure_blank_image()
+    else:
+        settings = MODE_SETTINGS[mode]
+        base_size = settings.base_size
+        image_size = settings.image_size
+        crop_mode = settings.crop_mode
+        final_image_path = str(image_path)
 
-    vision_tokens = calculate_valid_vision_tokens(width, height, settings)
+        # Calculate vision tokens
+        try:
+            with Image.open(final_image_path) as img:
+                width, height = img.size
+                vision_tokens = calculate_valid_vision_tokens(width, height, settings)
+        except Exception as e:
+            logger.error(f"Error calculating vision tokens for {final_image_path}: {e}")
+            vision_tokens = 0
 
-    logger.info(f"Running inference (mode={mode}, vision_tokens={vision_tokens})...")
+    if mode != "text":
+        logger.info(
+            f"Running inference (mode={mode}, vision_tokens={vision_tokens})..."
+        )
 
     output = model.infer(
         tokenizer,
         prompt=prompt,
-        image_file=image_path,
+        image_file=final_image_path,
         output_path=str(TMP_OUTPUT_PATH),
-        base_size=settings.base_size,
-        image_size=settings.image_size,
-        crop_mode=settings.crop_mode,
+        base_size=base_size,
+        image_size=image_size,
+        crop_mode=crop_mode,
         save_results=False,
         test_compress=True,
         eval_mode=True,
@@ -272,48 +315,41 @@ def cmd_ocr(args: argparse.Namespace) -> None:
         width, height = img.size
         vision_tokens = calculate_valid_vision_tokens(width, height, settings)
 
-        logger.info("=" * 60)
         logger.info("DeepSeek-OCR Evaluation (Dry Run)")
-        logger.info("=" * 60)
-        logger.info(
-            f"\n[INPUT]\n  Image: {args.image}\n  Dimensions: {width} x {height}"
-        )
-        logger.info(f"  Mode: {args.mode}")
-        logger.info(f"\n[VISION TOKENS]\n  Valid vision tokens: {vision_tokens}")
+        logger.info(f"[INPUT] Image: {args.image}, Dimensions: {width} x {height}")
+        logger.info(f"[VISION TOKENS] Valid vision tokens: {vision_tokens}")
 
         if ground_truth:
             gt_tokens = tokenize_text(ground_truth)
             compression = gt_tokens / vision_tokens if vision_tokens > 0 else 0
-            logger.info(
-                f"\n[GROUND TRUTH]\n  Text length: {len(ground_truth)} characters"
-            )
+            logger.info(f"[GROUND TRUTH] Text length: {len(ground_truth)} characters")
             logger.info(f"  Approx tokens: {gt_tokens}")
-            logger.info(f"\n[COMPRESSION]\n  Compression ratio: {compression:.2f}x")
+            logger.info(f"[COMPRESSION] Compression ratio: {compression:.2f}x")
         return
 
-    logger.info("=" * 60)
     logger.info("DeepSeek-OCR Evaluation")
-    logger.info("=" * 60)
 
-    output, vision_tokens, output_tokens = run_ocr(args.image, args.mode, args.prompt)
+    output, vision_tokens, output_tokens = run_inference(
+        prompt=args.prompt,
+        image_path=args.image,
+        mode=args.mode,
+    )
     compression = output_tokens / vision_tokens if vision_tokens > 0 else 0
 
-    logger.info(f"\n[RESULTS]\n  Vision tokens: {vision_tokens}")
+    logger.info(f"[RESULTS] Vision tokens: {vision_tokens}")
     logger.info(
-        f"  Output tokens: {output_tokens}\n  Compression ratio: {compression:.2f}x"
+        f"  Output tokens: {output_tokens}, Compression ratio: {compression:.2f}x"
     )
 
     if ground_truth:
         metrics = calculate_edit_distance(output, ground_truth)
+        logger.info(f"[ACCURACY] Edit distance: {metrics['edit_distance']} characters")
         logger.info(
-            f"\n[ACCURACY]\n  Edit distance: {metrics['edit_distance']} characters"
-        )
-        logger.info(
-            f"  Normalized ED: {metrics['normalized_ed']}\n  Precision: {metrics['precision']}%"
+            f"  Normalized ED: {metrics['normalized_ed']}, Precision: {metrics['precision']}%"
         )
 
     if args.show_output:
-        logger.info(f"\n[OCR OUTPUT]\n{'-' * 60}")
+        logger.info("[OCR OUTPUT]")
         logger.info(output[:2000] + ("..." if len(output) > 2000 else ""))
 
 
@@ -324,55 +360,30 @@ def _ensure_blank_image() -> str:
     return str(TMP_BLANK_IMAGE)
 
 
-def _infer_with_text(
-    model: AutoModel,
-    tokenizer: AutoTokenizer,
-    prompt: str,
-) -> str:
-    """Run inference with text context (using blank image)."""
-    return model.infer(
-        tokenizer,
-        prompt=prompt,
-        image_file=_ensure_blank_image(),
-        output_path=str(TMP_OUTPUT_PATH),
-        base_size=512,
-        image_size=512,
-        crop_mode=False,
-        save_results=False,
-        test_compress=True,
-        eval_mode=True,
-    )
+def save_experiment_results(
+    results: dict, results_dir: Path, output_filename: str
+) -> None:
+    """Save experiment results to a JSON file."""
+    output_path = results_dir / output_filename
+    with open(output_path, "w") as f:
+        json.dump(results, f, indent=2)
+
+    logger.info(f"Saved to: {output_path}")
 
 
-def _infer_with_vision(
-    model: AutoModel,
-    tokenizer: AutoTokenizer,
-    prompt: str,
-    image_path: str,
-    settings: ModeSettings,
-) -> str:
-    """Run inference with image context."""
-    return model.infer(
-        tokenizer,
-        prompt=prompt,
-        image_file=image_path,
-        output_path=str(TMP_OUTPUT_PATH),
-        base_size=settings.base_size,
-        image_size=settings.image_size,
-        crop_mode=settings.crop_mode,
-        save_results=False,
-        test_compress=True,
-        eval_mode=True,
-    )
+def setup_experiment_dirs(experiment_name: str) -> tuple[Path, Path]:
+    """Sets up and returns data_dir and results_dir for an experiment."""
+    root_dir = Path(__file__).parent
+    data_dir = root_dir / ".cache" / experiment_name
+    data_dir.mkdir(parents=True, exist_ok=True)
+    results_dir = root_dir / "results"
+    results_dir.mkdir(exist_ok=True)
+    return data_dir, results_dir
 
 
 def cmd_quality(args: argparse.Namespace) -> None:
     """Run QuALITY long-document QA experiment comparing text vs vision accuracy."""
-    root_dir = Path(__file__).parent
-    data_dir = root_dir / ".cache" / "quality"
-    data_dir.mkdir(parents=True, exist_ok=True)
-    results_dir = root_dir / "results"
-    results_dir.mkdir(exist_ok=True)
+    data_dir, results_dir = setup_experiment_dirs("quality")
 
     logger.info("Loading QuALITY dataset...")
     try:
@@ -410,17 +421,13 @@ def cmd_quality(args: argparse.Namespace) -> None:
         "total": 0,
     }
 
-    logger.info(f"\n{'=' * 70}")
     logger.info(f"QUALITY EXPERIMENT: Mode={args.mode}, Articles={args.num_articles}")
-    logger.info("=" * 70)
 
     for article_hash, article_data in article_items:
         article = article_data["article"]
         questions = article_data["questions"][: args.questions_per_article]
 
-        logger.info(
-            f"\n{'─' * 70}\nArticle: {article_hash} ({len(article.split())} words)\n{'─' * 70}"
-        )
+        logger.info(f"Article: {article_hash} ({len(article.split())} words)")
 
         img_path = data_dir / f"{article_hash}.png"
         if not img_path.exists():
@@ -434,7 +441,13 @@ def cmd_quality(args: argparse.Namespace) -> None:
 
             # Text condition
             text_prompt = f"<image>\n{article}\n\nQuestion: {question}\n\nOptions:\n{options_text}\n\nAnswer with just the option number (0, 1, 2, or 3):"
-            text_output = _infer_with_text(model, tokenizer, text_prompt)
+            text_output, _, _ = run_inference(
+                text_prompt,
+                "",  # No image for text mode
+                mode="text",
+                model=model,
+                tokenizer=tokenizer,
+            )
             text_tokens = (
                 len(tokenizer.encode(article, add_special_tokens=False))
                 + PROMPT_TOKEN_OVERHEAD
@@ -442,8 +455,12 @@ def cmd_quality(args: argparse.Namespace) -> None:
 
             # Vision condition
             vision_prompt = f"<image>\n\nQuestion: {question}\n\nOptions:\n{options_text}\n\nAnswer with just the option number (0, 1, 2, or 3):"
-            vision_output = _infer_with_vision(
-                model, tokenizer, vision_prompt, str(img_path), settings
+            vision_output, _, _ = run_inference(
+                vision_prompt,
+                str(img_path),
+                mode=args.mode,
+                model=model,
+                tokenizer=tokenizer,
             )
             vision_tokens = settings.tokens + PROMPT_TOKEN_OVERHEAD
 
@@ -491,23 +508,18 @@ def cmd_quality(args: argparse.Namespace) -> None:
         "compression_ratio": round(compression, 2),
     }
 
-    output_path = results_dir / f"quality_{args.mode}_{args.num_articles}articles.json"
-    with open(output_path, "w") as f:
-        json.dump(results, f, indent=2)
-
     logger.info(
-        f"\n{'=' * 70}\nRESULTS: Text={text_acc}%, Vision={vision_acc}%, Compression={compression:.1f}x"
+        f"RESULTS: Text={text_acc}%, Vision={vision_acc}%, Compression={compression:.1f}x"
     )
-    logger.info(f"Saved to: {output_path}")
+
+    save_experiment_results(
+        results, results_dir, f"quality_{args.mode}_{args.num_articles}articles.json"
+    )
 
 
 def cmd_finewiki(args: argparse.Namespace) -> None:
     """Run FineWiki language modeling experiment comparing text vs vision continuation."""
-    root_dir = Path(__file__).parent
-    data_dir = root_dir / ".cache" / "finewiki"
-    data_dir.mkdir(parents=True, exist_ok=True)
-    results_dir = root_dir / "results"
-    results_dir.mkdir(exist_ok=True)
+    data_dir, results_dir = setup_experiment_dirs("finewiki")
 
     logger.info("Loading FineWiki dataset...")
     try:
@@ -544,9 +556,7 @@ def cmd_finewiki(args: argparse.Namespace) -> None:
         "total": 0,
     }
 
-    logger.info(f"\n{'=' * 70}")
     logger.info(f"FINEWIKI EXPERIMENT: Mode={args.mode}, Articles={args.num_articles}")
-    logger.info("=" * 70)
 
     for i, article in enumerate(articles):
         words = article["text"].split()
@@ -555,9 +565,7 @@ def cmd_finewiki(args: argparse.Namespace) -> None:
             words[args.context_words : args.context_words + args.continuation_words]
         )
 
-        logger.info(
-            f"\n{'─' * 70}\nArticle {i + 1}: {article['title'][:50]}...\n{'─' * 70}"
-        )
+        logger.info(f"Article {i + 1}: {article['title'][:50]}...")
 
         img_path = data_dir / f"article_{i}.png"
         if not img_path.exists():
@@ -567,7 +575,13 @@ def cmd_finewiki(args: argparse.Namespace) -> None:
         text_prompt = (
             f"<image>\n{context}\n\nContinue this text with the next sentence:"
         )
-        text_output = _infer_with_text(model, tokenizer, text_prompt)
+        text_output, _, _ = run_inference(
+            text_prompt,
+            "",  # No image for text mode
+            mode="text",
+            model=model,
+            tokenizer=tokenizer,
+        )
         text_tokens = (
             len(tokenizer.encode(context, add_special_tokens=False))
             + CONTINUATION_TOKEN_OVERHEAD
@@ -575,8 +589,12 @@ def cmd_finewiki(args: argparse.Namespace) -> None:
 
         # Vision condition
         vision_prompt = "<image>\n\nContinue this text with the next sentence:"
-        vision_output = _infer_with_vision(
-            model, tokenizer, vision_prompt, str(img_path), settings
+        vision_output, _, _ = run_inference(
+            vision_prompt,
+            str(img_path),
+            mode=args.mode,
+            model=model,
+            tokenizer=tokenizer,
         )
         vision_tokens = settings.tokens + CONTINUATION_TOKEN_OVERHEAD
 
@@ -629,16 +647,15 @@ def cmd_finewiki(args: argparse.Namespace) -> None:
             "compression_ratio": round(compression, 2),
         }
 
-        output_path = (
-            results_dir / f"finewiki_{args.mode}_{args.num_articles}articles.json"
-        )
-        with open(output_path, "w") as f:
-            json.dump(results, f, indent=2)
-
         logger.info(
-            f"\n{'=' * 70}\nRESULTS: Text={text_avg:.3f}, Vision={vision_avg:.3f}, Compression={compression:.1f}x"
+            f"RESULTS: Text={text_avg:.3f}, Vision={vision_avg:.3f}, Compression={compression:.1f}x"
         )
-        logger.info(f"Saved to: {output_path}")
+
+        save_experiment_results(
+            results,
+            results_dir,
+            f"finewiki_{args.mode}_{args.num_articles}articles.json",
+        )
 
 
 def main() -> None:
@@ -673,7 +690,7 @@ def main() -> None:
         "quality", help="Run QuALITY long-document QA experiment"
     )
     quality_parser.add_argument(
-        "--mode", type=str, default="base", choices=["tiny", "small", "base", "large"]
+        "--mode", type=str, default="base", choices=EXPERIMENT_MODES
     )
     quality_parser.add_argument("--num-articles", type=int, default=10)
     quality_parser.add_argument("--questions-per-article", type=int, default=5)
@@ -683,7 +700,7 @@ def main() -> None:
         "finewiki", help="Run FineWiki language modeling experiment"
     )
     finewiki_parser.add_argument(
-        "--mode", type=str, default="base", choices=["tiny", "small", "base", "large"]
+        "--mode", type=str, default="base", choices=EXPERIMENT_MODES
     )
     finewiki_parser.add_argument("--num-articles", type=int, default=20)
     finewiki_parser.add_argument("--context-words", type=int, default=500)
