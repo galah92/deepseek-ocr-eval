@@ -227,7 +227,13 @@ def run_quality_experiment(mode: str = 'small', num_articles: int = 10, question
     results_dir.mkdir(exist_ok=True)
 
     print("Loading QuALITY dataset...")
-    ds = load_dataset('emozilla/quality', split='validation')
+    try:
+        ds = load_dataset('emozilla/quality', split='validation')
+    except Exception as e:
+        print(f"Error loading QuALITY dataset: {e}", file=sys.stderr)
+        print("Please check your internet connection and HuggingFace access.", file=sys.stderr)
+        print("Dataset: https://huggingface.co/datasets/emozilla/quality", file=sys.stderr)
+        return None
 
     # Group questions by article
     articles = {}

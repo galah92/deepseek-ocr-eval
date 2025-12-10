@@ -236,7 +236,13 @@ def run_finewiki_experiment(mode: str = 'small', num_articles: int = 20,
     results_dir.mkdir(exist_ok=True)
 
     print("Loading FineWiki dataset (English)...")
-    ds = load_dataset('HuggingFaceFW/finewiki', name='en', split='train', streaming=True)
+    try:
+        ds = load_dataset('HuggingFaceFW/finewiki', name='en', split='train', streaming=True)
+    except Exception as e:
+        print(f"Error loading FineWiki dataset: {e}", file=sys.stderr)
+        print("Please check your internet connection and HuggingFace access.", file=sys.stderr)
+        print("Dataset: https://huggingface.co/datasets/HuggingFaceFW/finewiki", file=sys.stderr)
+        return None
 
     # Get articles with sufficient length
     articles = []
