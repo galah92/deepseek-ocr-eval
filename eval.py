@@ -502,6 +502,12 @@ def run_inference(
     )
 
     output_tokens = tokenize_text(output, tokenizer)
+
+    # Clear CUDA cache to prevent OOM in long-running experiments
+    import torch
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
     return output, vision_tokens, output_tokens
 
 
