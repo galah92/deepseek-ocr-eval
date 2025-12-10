@@ -235,6 +235,210 @@ def calculate_edit_distance(output: str, ground_truth: str) -> dict[str, int | f
     }
 
 
+# ============================================================================
+# Noise Injection Functions (Experiment A: Robustness Boundary)
+# ============================================================================
+
+import random
+import string
+
+# Common OCR confusion pairs (visually similar characters)
+OCR_CONFUSIONS = {
+    'O': '0', '0': 'O',
+    'l': '1', '1': 'l',
+    'I': 'l', 'l': 'I',
+    'S': '5', '5': 'S',
+    'B': '8', '8': 'B',
+    'g': '9', '9': 'g',
+    'Z': '2', '2': 'Z',
+    'rn': 'm', 'm': 'rn',
+    'cl': 'd', 'd': 'cl',
+    'vv': 'w', 'w': 'vv',
+}
+
+# Keyboard proximity for typo simulation (QWERTY layout)
+KEYBOARD_NEIGHBORS = {
+    'a': 'sqwz', 'b': 'vghn', 'c': 'xdfv', 'd': 'sfecx', 'e': 'wrsdf',
+    'f': 'dgrtcv', 'g': 'fhtybn', 'h': 'gjuynm', 'i': 'uojk', 'j': 'hkunim',
+    'k': 'jlomi', 'l': 'kop', 'm': 'njk', 'n': 'bhjm', 'o': 'iplk',
+    'p': 'ol', 'q': 'wa', 'r': 'etdf', 's': 'awedxz', 't': 'rfyg',
+    'u': 'yihj', 'v': 'cfgb', 'w': 'qase', 'x': 'zsdc', 'y': 'tugh',
+    'z': 'asx',
+}
+
+
+def inject_typos(text: str, rate: float, seed: int = 42) -> str:
+    """Inject typos by substituting characters with keyboard neighbors.
+
+    Args:
+        text: Input text to corrupt
+        rate: Fraction of characters to corrupt (0.0 to 1.0)
+        seed: Random seed for reproducibility
+
+    Returns:
+        Corrupted text with simulated typos
+    """
+    random.seed(seed)
+    chars = list(text)
+    num_to_corrupt = int(len(chars) * rate)
+
+    # Get indices of alphabetic characters (don't corrupt spaces/punctuation)
+    alpha_indices = [i for i, c in enumerate(chars) if c.isalpha()]
+    if not alpha_indices:
+        return text
+
+    # Randomly select indices to corrupt
+    indices_to_corrupt = random.sample(
+        alpha_indices,
+        min(num_to_corrupt, len(alpha_indices))
+    )
+
+    for idx in indices_to_corrupt:
+        char = chars[idx].lower()
+        if char in KEYBOARD_NEIGHBORS:
+            neighbors = KEYBOARD_NEIGHBORS[char]
+            replacement = random.choice(neighbors)
+            # Preserve case
+            if chars[idx].isupper():
+                replacement = replacement.upper()
+            chars[idx] = replacement
+
+    return ''.join(chars)
+
+
+def inject_ocr_errors(text: str, rate: float, seed: int = 42) -> str:
+    """Inject OCR-style errors using visually similar character substitutions.
+
+    Args:
+        text: Input text to corrupt
+        rate: Fraction of eligible characters to corrupt (0.0 to 1.0)
+        seed: Random seed for reproducibility
+
+    Returns:
+        Corrupted text with simulated OCR errors
+    """
+    random.seed(seed)
+
+    # First handle multi-character confusions
+    result = text
+    for original, replacement in [('rn', 'm'), ('cl', 'd'), ('vv', 'w')]:
+        if random.random() < rate:
+            result = result.replace(original, replacement)
+
+    # Then handle single-character confusions
+    chars = list(result)
+    single_confusions = {k: v for k, v in OCR_CONFUSIONS.items() if len(k) == 1}
+
+    eligible_indices = [
+        i for i, c in enumerate(chars)
+        if c in single_confusions
+    ]
+
+    num_to_corrupt = int(len(eligible_indices) * rate)
+    indices_to_corrupt = random.sample(
+        eligible_indices,
+        min(num_to_corrupt, len(eligible_indices))
+    ) if eligible_indices else []
+
+    for idx in indices_to_corrupt:
+        chars[idx] = single_confusions[chars[idx]]
+
+    return ''.join(chars)
+
+
+def inject_deletions(text: str, rate: float, seed: int = 42) -> str:
+    """Inject errors by randomly deleting characters.
+
+    Args:
+        text: Input text to corrupt
+        rate: Fraction of characters to delete (0.0 to 1.0)
+        seed: Random seed for reproducibility
+
+    Returns:
+        Corrupted text with random deletions
+    """
+    random.seed(seed)
+    chars = list(text)
+    num_to_delete = int(len(chars) * rate)
+
+    # Don't delete spaces to preserve word boundaries
+    non_space_indices = [i for i, c in enumerate(chars) if c != ' ']
+    if not non_space_indices:
+        return text
+
+    indices_to_delete = set(random.sample(
+        non_space_indices,
+        min(num_to_delete, len(non_space_indices))
+    ))
+
+    return ''.join(c for i, c in enumerate(chars) if i not in indices_to_delete)
+
+
+def inject_insertions(text: str, rate: float, seed: int = 42) -> str:
+    """Inject errors by randomly inserting characters.
+
+    Args:
+        text: Input text to corrupt
+        rate: Fraction of positions to insert at (0.0 to 1.0)
+        seed: Random seed for reproducibility
+
+    Returns:
+        Corrupted text with random insertions
+    """
+    random.seed(seed)
+    chars = list(text)
+    num_to_insert = int(len(chars) * rate)
+
+    # Insert random lowercase letters at random positions
+    for _ in range(num_to_insert):
+        pos = random.randint(0, len(chars))
+        char = random.choice(string.ascii_lowercase)
+        chars.insert(pos, char)
+
+    return ''.join(chars)
+
+
+def inject_noise(
+    text: str,
+    noise_type: str,
+    rate: float,
+    seed: int = 42
+) -> str:
+    """Apply noise injection to text.
+
+    Args:
+        text: Input text to corrupt
+        noise_type: One of 'typos', 'ocr', 'deletions', 'insertions', 'mixed'
+        rate: Corruption rate (0.0 to 1.0)
+        seed: Random seed for reproducibility
+
+    Returns:
+        Corrupted text
+    """
+    if rate <= 0:
+        return text
+
+    if noise_type == 'typos':
+        return inject_typos(text, rate, seed)
+    elif noise_type == 'ocr':
+        return inject_ocr_errors(text, rate, seed)
+    elif noise_type == 'deletions':
+        return inject_deletions(text, rate, seed)
+    elif noise_type == 'insertions':
+        return inject_insertions(text, rate, seed)
+    elif noise_type == 'mixed':
+        # Apply a mix of all noise types at reduced rates
+        result = text
+        sub_rate = rate / 4
+        result = inject_typos(result, sub_rate, seed)
+        result = inject_ocr_errors(result, sub_rate, seed + 1)
+        result = inject_deletions(result, sub_rate, seed + 2)
+        result = inject_insertions(result, sub_rate, seed + 3)
+        return result
+    else:
+        raise ValueError(f"Unknown noise type: {noise_type}")
+
+
 def run_inference(
     prompt: str,
     image_path: str | Path,
@@ -827,6 +1031,219 @@ def cmd_truncation(args: argparse.Namespace) -> None:
         )
 
 
+def cmd_noise(args: argparse.Namespace) -> None:
+    """Run noise injection experiment (Experiment A) comparing text vs vision robustness.
+
+    Tests whether vision encoders degrade more gracefully than text tokenizers
+    when input text contains noise (typos, OCR errors, etc.).
+    """
+    data_dir, results_dir = setup_experiment_dirs("noise")
+
+    logger.info("Loading QuALITY dataset...")
+    try:
+        ds = load_dataset("emozilla/quality", split="validation")
+    except Exception as e:
+        logger.error(f"Error loading QuALITY dataset: {e}")
+        return
+
+    # Group questions by article
+    articles = {}
+    for item in ds:
+        article_hash = hashlib.md5(item["article"][:100].encode()).hexdigest()[:8]
+        if article_hash not in articles:
+            articles[article_hash] = {"article": item["article"], "questions": []}
+        articles[article_hash]["questions"].append(
+            {
+                "question": item["question"],
+                "options": item["options"],
+                "answer": item["answer"],
+            }
+        )
+
+    logger.info(f"Found {len(articles)} unique articles")
+    article_items = list(articles.items())[: args.num_articles]
+
+    model, tokenizer = load_model()
+    settings = MODE_SETTINGS[args.mode]
+
+    # Parse noise levels
+    noise_levels = [float(x) for x in args.noise_levels.split(",")]
+
+    results = {
+        "mode": args.mode,
+        "noise_type": args.noise_type,
+        "noise_levels": noise_levels,
+        "articles": {},
+        "summary": {},
+    }
+
+    # Track accuracy at each noise level
+    level_stats = {
+        level: {"text_correct": 0, "vision_correct": 0, "total": 0}
+        for level in noise_levels
+    }
+
+    logger.info(f"NOISE EXPERIMENT: Mode={args.mode}, Type={args.noise_type}")
+    logger.info(f"Noise levels: {noise_levels}")
+    logger.info(f"Articles: {args.num_articles}, Questions/article: {args.questions_per_article}")
+
+    for article_hash, article_data in article_items:
+        article = article_data["article"]
+        questions = article_data["questions"][: args.questions_per_article]
+
+        logger.info(f"\nArticle: {article_hash} ({len(article.split())} words)")
+
+        article_results = {
+            "questions": [],
+            "noise_levels": {},
+        }
+
+        for qa in questions:
+            question, options, expected = qa["question"], qa["options"], qa["answer"]
+            options_text = "\n".join(f"{i}. {opt}" for i, opt in enumerate(options))
+
+            question_results = {
+                "question": question[:100],
+                "expected": expected,
+                "levels": {},
+            }
+
+            for level in noise_levels:
+                # Apply noise to article text
+                noisy_article = inject_noise(
+                    article,
+                    args.noise_type,
+                    level,
+                    seed=42 + int(level * 1000)  # Different seed per level
+                )
+
+                # Also apply noise to question if specified
+                if args.noise_question:
+                    noisy_question = inject_noise(question, args.noise_type, level, seed=43)
+                    noisy_options = inject_noise(options_text, args.noise_type, level, seed=44)
+                else:
+                    noisy_question = question
+                    noisy_options = options_text
+
+                # Render noisy article to image
+                img_path = data_dir / f"{article_hash}_noise{int(level*100)}.png"
+                if not img_path.exists():
+                    render_text_to_image(noisy_article, str(img_path))
+
+                # Text condition (noisy text directly)
+                text_prompt = f"<image>\n{noisy_article}\n\nQuestion: {noisy_question}\n\nOptions:\n{noisy_options}\n\nAnswer with just the option number (0, 1, 2, or 3):"
+                text_output, _, _ = run_inference(
+                    text_prompt,
+                    "",  # No image for text mode
+                    mode="text",
+                    model=model,
+                    tokenizer=tokenizer,
+                )
+
+                # Vision condition (noisy text rendered to image)
+                vision_prompt = f"<image>\n\nQuestion: {noisy_question}\n\nOptions:\n{noisy_options}\n\nAnswer with just the option number (0, 1, 2, or 3):"
+                vision_output, _, _ = run_inference(
+                    vision_prompt,
+                    str(img_path),
+                    mode=args.mode,
+                    model=model,
+                    tokenizer=tokenizer,
+                )
+
+                # Parse answers
+                text_pred = next((int(c) for c in text_output.strip() if c in "0123"), -1)
+                vision_pred = next((int(c) for c in vision_output.strip() if c in "0123"), -1)
+
+                text_correct = text_pred == expected
+                vision_correct = vision_pred == expected
+
+                level_str = f"{int(level*100)}%"
+                logger.info(
+                    f"  [{level_str:>3}] Q: {question[:40]}... | "
+                    f"Text: {text_pred} {'✓' if text_correct else '✗'} | "
+                    f"Vision: {vision_pred} {'✓' if vision_correct else '✗'}"
+                )
+
+                question_results["levels"][level] = {
+                    "text_pred": text_pred,
+                    "vision_pred": vision_pred,
+                    "text_correct": text_correct,
+                    "vision_correct": vision_correct,
+                }
+
+                level_stats[level]["total"] += 1
+                if text_correct:
+                    level_stats[level]["text_correct"] += 1
+                if vision_correct:
+                    level_stats[level]["vision_correct"] += 1
+
+            article_results["questions"].append(question_results)
+
+        results["articles"][article_hash] = article_results
+
+    # Calculate summary statistics
+    summary_by_level = {}
+    for level in noise_levels:
+        n = level_stats[level]["total"]
+        if n > 0:
+            text_acc = round(level_stats[level]["text_correct"] / n * 100, 1)
+            vision_acc = round(level_stats[level]["vision_correct"] / n * 100, 1)
+            summary_by_level[level] = {
+                "total": n,
+                "text_accuracy": text_acc,
+                "vision_accuracy": vision_acc,
+                "vision_advantage": round(vision_acc - text_acc, 1),
+            }
+
+    results["summary"] = {
+        "by_level": summary_by_level,
+        "noise_type": args.noise_type,
+    }
+
+    # Log results table
+    logger.info("\n" + "=" * 70)
+    logger.info("NOISE EXPERIMENT RESULTS")
+    logger.info("=" * 70)
+    logger.info(f"Noise type: {args.noise_type}")
+    logger.info(f"Total questions per level: {level_stats[noise_levels[0]]['total']}")
+    logger.info("")
+    logger.info(f"{'Noise Level':<12} | {'Text Acc':<10} | {'Vision Acc':<10} | {'Δ (V-T)':<10}")
+    logger.info("-" * 50)
+
+    for level in noise_levels:
+        stats = summary_by_level.get(level, {})
+        text_acc = stats.get("text_accuracy", 0)
+        vision_acc = stats.get("vision_accuracy", 0)
+        delta = stats.get("vision_advantage", 0)
+        level_str = f"{int(level*100)}%"
+        delta_str = f"+{delta}" if delta > 0 else str(delta)
+        logger.info(f"{level_str:<12} | {text_acc:>8}% | {vision_acc:>8}% | {delta_str:>8}")
+
+    # Determine crossover point (if any)
+    crossover = None
+    for i, level in enumerate(noise_levels[1:], 1):
+        prev_level = noise_levels[i-1]
+        prev_delta = summary_by_level.get(prev_level, {}).get("vision_advantage", 0)
+        curr_delta = summary_by_level.get(level, {}).get("vision_advantage", 0)
+        if prev_delta <= 0 and curr_delta > 0:
+            crossover = level
+            break
+
+    if crossover:
+        logger.info(f"\nCrossover point: Vision overtakes text at {int(crossover*100)}% noise")
+    else:
+        # Check if vision always wins or always loses
+        all_deltas = [summary_by_level.get(l, {}).get("vision_advantage", 0) for l in noise_levels]
+        if all(d > 0 for d in all_deltas):
+            logger.info("\nVision outperforms text at ALL noise levels")
+        elif all(d <= 0 for d in all_deltas):
+            logger.info("\nText outperforms vision at ALL noise levels (no crossover found)")
+
+    save_experiment_results(
+        results, results_dir, f"noise_{args.noise_type}_{args.mode}_{args.num_articles}articles.json"
+    )
+
+
 def cmd_finewiki(args: argparse.Namespace) -> None:
     """Run FineWiki language modeling experiment comparing text vs vision continuation."""
     data_dir, results_dir = setup_experiment_dirs("finewiki")
@@ -1368,6 +1785,30 @@ def main() -> None:
     trunc_parser.add_argument("--num-articles", type=int, default=5)
     trunc_parser.add_argument("--questions-per-article", type=int, default=5)
 
+    # Noise injection experiment command (Experiment A)
+    noise_parser = subparsers.add_parser(
+        "noise", help="Run noise injection experiment (Experiment A)"
+    )
+    noise_parser.add_argument(
+        "--mode", type=str, default="large", choices=EXPERIMENT_MODES,
+        help="Vision mode to use"
+    )
+    noise_parser.add_argument(
+        "--noise-type", type=str, default="typos",
+        choices=["typos", "ocr", "deletions", "insertions", "mixed"],
+        help="Type of noise to inject"
+    )
+    noise_parser.add_argument(
+        "--noise-levels", type=str, default="0,0.02,0.05,0.10,0.15,0.20",
+        help="Comma-separated noise rates (0.0 to 1.0)"
+    )
+    noise_parser.add_argument("--num-articles", type=int, default=3)
+    noise_parser.add_argument("--questions-per-article", type=int, default=3)
+    noise_parser.add_argument(
+        "--noise-question", action="store_true",
+        help="Also apply noise to question and options (default: article only)"
+    )
+
     # Reproduce command
     reproduce_parser = subparsers.add_parser(
         "reproduce", help="Run a suite of experiments to reproduce paper results"
@@ -1390,6 +1831,8 @@ def main() -> None:
         cmd_omnidocbench(args)
     elif args.command == "truncation":
         cmd_truncation(args)
+    elif args.command == "noise":
+        cmd_noise(args)
     elif args.command == "reproduce":
         cmd_reproduce(args)
     else:
