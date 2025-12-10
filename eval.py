@@ -49,11 +49,6 @@ _tokenizer: AutoTokenizer | None = None
 MONO_FONT_PATH = font_manager.findfont("monospace")
 
 
-def get_font(size: int = 14) -> FreeTypeFont:
-    """Load a monospace font using matplotlib's font manager."""
-    return ImageFont.truetype(MONO_FONT_PATH, size)
-
-
 def load_model() -> tuple[AutoModel, AutoTokenizer]:
     """Load the DeepSeek-OCR model (cached after first load)."""
     global _model, _tokenizer
@@ -83,7 +78,7 @@ DEFAULT_BG_COLOR = "#1e1e1e"
 DEFAULT_FG_COLOR = "#d4d4d4"
 
 # Log font config at module load
-_font = get_font(DEFAULT_FONT_SIZE)
+_font = ImageFont.truetype(MONO_FONT_PATH, DEFAULT_FONT_SIZE)
 print(
     f"[Render config] font={_font.getname()[0]}, size={DEFAULT_FONT_SIZE}pt, "
     f"bg={DEFAULT_BG_COLOR}, fg={DEFAULT_FG_COLOR}, path={MONO_FONT_PATH}"
@@ -106,7 +101,7 @@ def render_text_to_image(
     Returns:
         Tuple of (image_width, image_height, num_lines).
     """
-    font = get_font(font_size)
+    font = ImageFont.truetype(MONO_FONT_PATH, font_size)
 
     lines = []
     for paragraph in text.split("\n"):
