@@ -85,19 +85,59 @@ def run_vision_condition(image_path: str, question: str, mode: str = 'small') ->
 
 
 def check_answer(predicted: str, expected: str) -> bool:
+    """Check if predicted answer matches expected answer.
+
+    Uses strict matching to avoid false positives from substring matches.
+    For example, "12" should NOT match "EMP-2847".
+
+    Args:
+        predicted: The model's predicted answer
+        expected: The expected ground truth answer
+
+    Returns:
+        True if answers match, False otherwise
+    """
     pred = predicted.lower().strip()
     exp = expected.lower().strip()
 
     if not pred:
         return False
-    if pred == exp or exp in pred:
-        return True
-    if pred in exp and len(pred) >= 2:
+
+    # Exact match (case-insensitive)
+    if pred == exp:
         return True
 
+    # Clean both strings of punctuation for comparison
     pred_clean = re.sub(r'[^\w\s]', '', pred)
     exp_clean = re.sub(r'[^\w\s]', '', exp)
-    return pred_clean == exp_clean or exp_clean in pred_clean or (pred_clean in exp_clean and len(pred_clean) >= 2)
+
+    # Exact match after cleaning
+    if pred_clean == exp_clean:
+        return True
+
+    # Check if expected is contained in predicted as a complete phrase
+    # Use word boundaries to avoid partial matches like "12" in "2847"
+    exp_pattern = r'\b' + re.escape(exp_clean) + r'\b'
+    if re.search(exp_pattern, pred_clean):
+        return True
+
+    # For short expected answers (e.g., numbers, codes), require stricter matching
+    # Only allow if expected appears as a standalone token in prediction
+    exp_tokens = exp_clean.split()
+    pred_tokens = pred_clean.split()
+
+    # If expected is a single token, check if it's in the predicted tokens
+    if len(exp_tokens) == 1 and exp_tokens[0] in pred_tokens:
+        return True
+
+    # For multi-token expected answers, check if all tokens appear in order
+    if len(exp_tokens) > 1:
+        pred_text = ' '.join(pred_tokens)
+        exp_text = ' '.join(exp_tokens)
+        if exp_text in pred_text:
+            return True
+
+    return False
 
 
 def run_experiment(mode: str = 'small', data_config: str = 'default'):
