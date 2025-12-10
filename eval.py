@@ -25,6 +25,7 @@ import os
 import sys
 from pathlib import Path
 
+from matplotlib import font_manager
 from PIL import Image, ImageDraw, ImageFont
 from PIL.ImageFont import FreeTypeFont
 from transformers import AutoModel, AutoTokenizer
@@ -69,8 +70,6 @@ _tokenizer: AutoTokenizer | None = None
 
 def get_font(size: int = 14) -> FreeTypeFont:
     """Load a monospace font using matplotlib's font manager."""
-    from matplotlib import font_manager
-
     font_path = font_manager.findfont("monospace")
     return ImageFont.truetype(font_path, size)
 
