@@ -106,6 +106,43 @@ deepseek-ocr-eval/
 | Tokens Used | 15,709 | 6,120 |
 | **Compression Ratio** | -- | **2.57x** |
 
+### Text Rendering Configuration Study
+
+We tested how different text-to-image rendering configurations affect OCR accuracy when using vision tokens as context.
+
+**Configurations tested:**
+- **Fonts**: Monospace, Serif, Sans-serif
+- **Sizes**: Small (14pt), Medium (20pt), Large (28pt)
+- **Colors**: Default (black on white), Dark mode, Sepia, Blue, Low contrast
+
+| Font | Vision Accuracy |
+|------|-----------------|
+| **Monospace** | **86.7%** |
+| Serif | 83.3% |
+| Sans-serif | 80.0% |
+
+| Size | Vision Accuracy |
+|------|-----------------|
+| **Small (14pt)** | **86.7%** |
+| **Medium (20pt)** | **86.7%** |
+| Large (28pt) | 76.7% |
+
+| Color Scheme | Vision Accuracy |
+|--------------|-----------------|
+| **Dark mode** | **93.3%** |
+| Blue | 90.0% |
+| Default (B&W) | 86.7% |
+| Sepia | 80.0% |
+| Low contrast | 70.0% |
+
+**Key findings:**
+1. **Dark mode is optimal** — light text on dark background achieves parity with text-only condition (93.3%)
+2. **Monospace fonts** outperform serif and sans-serif for OCR readability
+3. **Smaller fonts** (14-20pt) work better than large fonts (more content fits in fixed resolution)
+4. **Avoid** low contrast schemes and sepia tones
+
+Based on these results, we use **dark mode + monospace + 12pt font** for all text-to-image rendering.
+
 ### Critical Perspective
 
 This work relates to the Lee et al. (2024) critique of optical context compression:
