@@ -165,8 +165,8 @@ def run_experiment(mode: str = 'small', data_config: str = 'default'):
             stats['total'] += 1
 
         n = len(doc_data['questions'])
-        doc_results['text_accuracy'] = round(doc_results['text_correct'] / n * 100, 1)
-        doc_results['vision_accuracy'] = round(doc_results['vision_correct'] / n * 100, 1)
+        doc_results['text_accuracy'] = round(doc_results['text_correct'] / n * 100, 1) if n > 0 else 0
+        doc_results['vision_accuracy'] = round(doc_results['vision_correct'] / n * 100, 1) if n > 0 else 0
         results['documents'][doc_name] = doc_results
         print(f"\n  Summary: Text {doc_results['text_correct']}/{n}, Vision {doc_results['vision_correct']}/{n}")
 

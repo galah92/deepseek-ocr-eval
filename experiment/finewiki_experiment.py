@@ -335,10 +335,10 @@ def run_finewiki_experiment(mode: str = 'small', num_articles: int = 20,
     # Summary
     n = stats['total']
     if n > 0:
-        text_avg_overlap = stats['text_overlap_sum'] / n
-        vision_avg_overlap = stats['vision_overlap_sum'] / n
-        text_first_rate = stats['text_first_word'] / n
-        vision_first_rate = stats['vision_first_word'] / n
+        text_avg_overlap = stats['text_overlap_sum'] / n if n > 0 else 0
+        vision_avg_overlap = stats['vision_overlap_sum'] / n if n > 0 else 0
+        text_first_rate = stats['text_first_word'] / n if n > 0 else 0
+        vision_first_rate = stats['vision_first_word'] / n if n > 0 else 0
         compression = stats['text_tokens'] / stats['vision_tokens'] if stats['vision_tokens'] > 0 else 0
 
         results['summary'] = {

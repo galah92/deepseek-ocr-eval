@@ -318,8 +318,8 @@ def run_quality_experiment(mode: str = 'small', num_articles: int = 10, question
             stats['total'] += 1
 
         n = len(questions)
-        article_results['text_accuracy'] = round(article_results['text_correct'] / n * 100, 1)
-        article_results['vision_accuracy'] = round(article_results['vision_correct'] / n * 100, 1)
+        article_results['text_accuracy'] = round(article_results['text_correct'] / n * 100, 1) if n > 0 else 0
+        article_results['vision_accuracy'] = round(article_results['vision_correct'] / n * 100, 1) if n > 0 else 0
         results['articles'][article_hash] = article_results
         print(f"\n  Article Summary: Text {article_results['text_correct']}/{n}, Vision {article_results['vision_correct']}/{n}")
 
