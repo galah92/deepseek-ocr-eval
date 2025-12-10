@@ -166,10 +166,14 @@ Continue this text with the next sentence:"""
         crop_mode=False, save_results=False, test_compress=True, eval_mode=True
     )
 
+    # Overhead estimate: ~50 tokens for prompt template
+    # Breakdown: "Continue this text with the next sentence:" (~10) + formatting (~5) + buffer (~35)
+    PROMPT_OVERHEAD_TOKENS = 50
+
     return {
         'prediction': output.strip(),
         'context_tokens': context_tokens,
-        'total_tokens': context_tokens + 50,
+        'total_tokens': context_tokens + PROMPT_OVERHEAD_TOKENS,
     }
 
 
@@ -189,10 +193,13 @@ Continue this text with the next sentence:"""
         crop_mode=False, save_results=False, test_compress=True, eval_mode=True
     )
 
+    # Overhead estimate: ~50 tokens for prompt template
+    PROMPT_OVERHEAD_TOKENS = 50
+
     return {
         'prediction': output.strip(),
         'vision_tokens': settings['vision_tokens'],
-        'total_tokens': settings['vision_tokens'] + 50,
+        'total_tokens': settings['vision_tokens'] + PROMPT_OVERHEAD_TOKENS,
     }
 
 

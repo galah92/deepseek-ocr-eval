@@ -165,10 +165,14 @@ Answer with just the option number (0, 1, 2, or 3):"""
         crop_mode=False, save_results=False, test_compress=True, eval_mode=True
     )
 
+    # Overhead estimate: ~100 tokens for question formatting, options list, and prompt template
+    # Breakdown: "Question: " (~3) + question (~20-40) + "Options:" (~2) + 4 options (~40) + "Answer..." (~5)
+    PROMPT_OVERHEAD_TOKENS = 100
+
     return {
         'answer': output.strip(),
         'context_tokens': context_tokens,
-        'total_tokens': context_tokens + 100,  # question + options overhead
+        'total_tokens': context_tokens + PROMPT_OVERHEAD_TOKENS,
     }
 
 
@@ -194,10 +198,13 @@ Answer with just the option number (0, 1, 2, or 3):"""
         crop_mode=False, save_results=False, test_compress=True, eval_mode=True
     )
 
+    # Overhead estimate: ~100 tokens for question formatting, options list, and prompt template
+    PROMPT_OVERHEAD_TOKENS = 100
+
     return {
         'answer': output.strip(),
         'vision_tokens': settings['vision_tokens'],
-        'total_tokens': settings['vision_tokens'] + 100,
+        'total_tokens': settings['vision_tokens'] + PROMPT_OVERHEAD_TOKENS,
     }
 
 
