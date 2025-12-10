@@ -89,12 +89,8 @@ def render_text_to_image(
     max_width: int = 1200,
     padding: int = 30,
     line_spacing: int = 4,
-) -> tuple[int, int, int]:
-    """Render text to image (dark mode for optimal OCR).
-
-    Returns:
-        Tuple of (image_width, image_height, num_lines).
-    """
+) -> None:
+    """Render text to image (dark mode for optimal OCR)."""
 
     lines = []
     for paragraph in text.split("\n"):
@@ -128,7 +124,6 @@ def render_text_to_image(
         y += line_height
 
     img.save(output_path)
-    return img_width, img_height, len(lines)
 
 
 def calculate_valid_vision_tokens(
