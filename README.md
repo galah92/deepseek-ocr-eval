@@ -11,16 +11,6 @@ DeepSeek-OCR is a vision-language model that compresses document images into a s
 3. Comparing OCR output to ground truth text
 4. Calculating compression ratio and precision
 
-## Installation
-
-```bash
-# Using uv (recommended)
-uv sync
-
-# Or using pip
-pip install -e .
-```
-
 **Requirements:** Python 3.10+, CUDA GPU with 16GB+ VRAM
 
 ## Usage
