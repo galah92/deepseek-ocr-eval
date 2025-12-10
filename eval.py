@@ -30,9 +30,6 @@ from PIL import Image, ImageDraw, ImageFont
 from PIL.ImageFont import FreeTypeFont
 from transformers import AutoModel, AutoTokenizer
 
-# Unbuffered output
-sys.stdout.reconfigure(line_buffering=True)
-
 # ============================================================================
 # Configuration
 # ============================================================================
