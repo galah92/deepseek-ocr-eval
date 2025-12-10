@@ -30,10 +30,6 @@ from PIL import Image, ImageDraw, ImageFont
 from PIL.ImageFont import FreeTypeFont
 from transformers import AutoModel, AutoTokenizer
 
-# ============================================================================
-# Configuration
-# ============================================================================
-
 # Temporary paths for experiments
 TMP_OUTPUT_PATH = "/tmp/deepseek_ocr_output"
 TMP_BLANK_IMAGE = "/tmp/blank_32x32.png"
@@ -76,11 +72,6 @@ def get_font(size: int = 14) -> FreeTypeFont:
     return ImageFont.truetype(MONO_FONT_PATH, size)
 
 
-# ============================================================================
-# Model Loading
-# ============================================================================
-
-
 def load_model() -> tuple[AutoModel, AutoTokenizer]:
     """Load the DeepSeek-OCR model (cached after first load)."""
     global _model, _tokenizer
@@ -103,10 +94,6 @@ def load_model() -> tuple[AutoModel, AutoTokenizer]:
     _model = _model.eval().cuda()
     return _model, _tokenizer
 
-
-# ============================================================================
-# Image Rendering
-# ============================================================================
 
 # Default rendering settings (dark mode for optimal OCR - see README)
 DEFAULT_FONT_SIZE = 12
@@ -172,11 +159,6 @@ def render_text_to_image(
 
     img.save(output_path)
     return img_width, img_height, len(lines)
-
-
-# ============================================================================
-# Token Calculation
-# ============================================================================
 
 
 def calculate_valid_vision_tokens(
@@ -252,11 +234,6 @@ def tokenize_text(text: str, tokenizer: AutoTokenizer | None = None) -> int:
     if tokenizer:
         return len(tokenizer.encode(text, add_special_tokens=False))
     return int(len(text.split()) * 1.3)
-
-
-# ============================================================================
-# OCR Evaluation
-# ============================================================================
 
 
 def calculate_edit_distance(output: str, ground_truth: str) -> dict[str, int | float]:
@@ -364,11 +341,6 @@ def cmd_ocr(args: argparse.Namespace) -> None:
     if args.show_output:
         print(f"\n[OCR OUTPUT]\n{'-' * 60}")
         print(output[:2000] + ("..." if len(output) > 2000 else ""))
-
-
-# ============================================================================
-# QuALITY Experiment
-# ============================================================================
 
 
 def _ensure_blank_image() -> str:
@@ -557,11 +529,6 @@ def cmd_quality(args: argparse.Namespace) -> None:
     print(f"Saved to: {output_path}")
 
 
-# ============================================================================
-# FineWiki Experiment
-# ============================================================================
-
-
 def cmd_finewiki(args: argparse.Namespace) -> None:
     """Run FineWiki language modeling experiment comparing text vs vision continuation."""
     from datasets import load_dataset
@@ -700,11 +667,6 @@ def cmd_finewiki(args: argparse.Namespace) -> None:
             f"\n{'=' * 70}\nRESULTS: Text={text_avg:.3f}, Vision={vision_avg:.3f}, Compression={compression:.1f}x"
         )
         print(f"Saved to: {output_path}")
-
-
-# ============================================================================
-# Main
-# ============================================================================
 
 
 def main() -> None:
