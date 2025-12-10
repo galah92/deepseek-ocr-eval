@@ -68,10 +68,12 @@ _model: AutoModel | None = None
 _tokenizer: AutoTokenizer | None = None
 
 
+MONO_FONT_PATH = font_manager.findfont("monospace")
+
+
 def get_font(size: int = 14) -> FreeTypeFont:
     """Load a monospace font using matplotlib's font manager."""
-    font_path = font_manager.findfont("monospace")
-    return ImageFont.truetype(font_path, size)
+    return ImageFont.truetype(MONO_FONT_PATH, size)
 
 
 # ============================================================================
@@ -106,38 +108,36 @@ def load_model() -> tuple[AutoModel, AutoTokenizer]:
 # Image Rendering
 # ============================================================================
 
+# Default rendering settings (dark mode for optimal OCR - see README)
+DEFAULT_FONT_SIZE = 12
+DEFAULT_BG_COLOR = "#1e1e1e"
+DEFAULT_FG_COLOR = "#d4d4d4"
 
-# Track whether we've logged font info (only log once per session)
-_font_info_logged = False
+# Log font config at module load
+_font = get_font(DEFAULT_FONT_SIZE)
+print(
+    f"[Render config] font={_font.getname()[0]}, size={DEFAULT_FONT_SIZE}pt, "
+    f"bg={DEFAULT_BG_COLOR}, fg={DEFAULT_FG_COLOR}, path={MONO_FONT_PATH}"
+)
+del _font
 
 
 def render_text_to_image(
     text: str,
     output_path: str,
-    font_size: int = 12,
+    font_size: int = DEFAULT_FONT_SIZE,
     max_width: int = 1200,
     padding: int = 30,
     line_spacing: int = 4,
-    bg_color: str = "#1e1e1e",
-    fg_color: str = "#d4d4d4",
+    bg_color: str = DEFAULT_BG_COLOR,
+    fg_color: str = DEFAULT_FG_COLOR,
 ) -> tuple[int, int, int]:
     """Render text to image (dark mode for optimal OCR).
 
     Returns:
         Tuple of (image_width, image_height, num_lines).
     """
-    global _font_info_logged
     font = get_font(font_size)
-
-    # Log rendering configuration once per session
-    if not _font_info_logged:
-        font_family, font_style = font.getname()
-        font_path = font.path if hasattr(font, "path") else "unknown"
-        print(
-            f"[Render config] font={font_family} ({font_style}), size={font_size}pt, "
-            f"bg={bg_color}, fg={fg_color}, path={font_path}"
-        )
-        _font_info_logged = True
 
     lines = []
     for paragraph in text.split("\n"):
