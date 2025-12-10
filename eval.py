@@ -1,20 +1,4 @@
-"""
-DeepSeek-OCR Evaluation: Compression Ratio & Accuracy
-
-Evaluates the DeepSeek-OCR model's ability to compress document images into
-vision tokens while maintaining OCR accuracy.
-
-Usage:
-    # OCR evaluation
-    uv run python eval.py ocr --image document.png --mode small
-    uv run python eval.py ocr --image document.png --ground-truth gt.txt
-
-    # QuALITY long-document QA experiment
-    uv run python eval.py quality --mode base --num-articles 10
-
-    # FineWiki language modeling experiment
-    uv run python eval.py finewiki --mode base --num-articles 20
-"""
+"""Evaluate DeepSeek-OCR compression ratio and accuracy on document images."""
 
 from __future__ import annotations
 
