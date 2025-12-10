@@ -196,11 +196,28 @@ CONFIG_GROUPS = {
 
 
 def get_font(font_type: str, font_size: int):
-    for font_path in FONT_CONFIGS.get(font_type, FONT_CONFIGS['mono']):
+    """Load a font of the specified type and size, with fallback to default.
+
+    Args:
+        font_type: One of 'mono', 'serif', or 'sans'
+        font_size: Font size in points
+
+    Returns:
+        PIL ImageFont object
+    """
+    font_paths = FONT_CONFIGS.get(font_type, FONT_CONFIGS.get('mono', []))
+    for font_path in font_paths:
         try:
             return ImageFont.truetype(font_path, font_size)
-        except:
+        except OSError as e:
+            # Font file not found or cannot be read
             continue
+        except IOError as e:
+            # I/O error reading font file
+            continue
+
+    # Log warning when falling back to default font
+    print(f"Warning: No {font_type} font found, using default font", file=sys.stderr)
     return ImageFont.load_default()
 
 

@@ -49,11 +49,25 @@ FONT_PATHS = _get_mono_font_paths()
 
 
 def get_font(size: int = 14):
+    """Load a monospace font of the specified size, with fallback to default.
+
+    Args:
+        size: Font size in points
+
+    Returns:
+        PIL ImageFont object
+    """
     for path in FONT_PATHS:
         try:
             return ImageFont.truetype(path, size)
-        except:
+        except OSError:
+            # Font file not found or cannot be read
             continue
+        except IOError:
+            # I/O error reading font file
+            continue
+
+    print(f"Warning: No monospace font found, using default font", file=sys.stderr)
     return ImageFont.load_default()
 
 
