@@ -160,6 +160,131 @@ def render_text_to_image(
     img.save(output_path)
 
 
+# ============================================================================
+# Augmented Rendering Functions (Experiment C: Visual Metadata Injection)
+# ============================================================================
+
+# Semantic highlighting colors (dark mode friendly)
+HIGHLIGHT_COLORS = {
+    "entity": "#4FC3F7",      # Light blue for named entities
+    "number": "#81C784",      # Green for numbers/dates
+    "keyword": "#FFB74D",     # Orange for keywords
+    "quote": "#BA68C8",       # Purple for quoted text
+}
+
+import re
+
+
+def identify_highlights(text: str) -> list[tuple[int, int, str]]:
+    """Identify spans to highlight with their types.
+
+    Returns list of (start, end, highlight_type) tuples.
+    """
+    highlights = []
+
+    # Numbers and dates (years, quantities, percentages)
+    for match in re.finditer(r'\b\d+(?:,\d{3})*(?:\.\d+)?%?\b|\b\d{4}\b', text):
+        highlights.append((match.start(), match.end(), "number"))
+
+    # Quoted text
+    for match in re.finditer(r'"[^"]+"|\'[^\']+\'', text):
+        highlights.append((match.start(), match.end(), "quote"))
+
+    # Capitalized words (likely proper nouns/entities) - not at sentence start
+    for match in re.finditer(r'(?<=[.!?]\s)[A-Z][a-z]+|(?<=\s)[A-Z][a-z]+(?:\s[A-Z][a-z]+)*', text):
+        # Filter out common words
+        word = match.group()
+        if word.lower() not in {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'was', 'are', 'were', 'been', 'be', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'shall', 'can', 'this', 'that', 'these', 'those', 'it', 'its', 'they', 'them', 'their', 'he', 'she', 'him', 'her', 'his', 'hers', 'we', 'us', 'our', 'you', 'your', 'i', 'me', 'my'}:
+            highlights.append((match.start(), match.end(), "entity"))
+
+    return sorted(highlights, key=lambda x: x[0])
+
+
+def render_augmented_text_to_image(
+    text: str,
+    output_path: str,
+    max_width: int = 1200,
+    padding: int = 30,
+    line_spacing: int = 4,
+) -> None:
+    """Render text with semantic highlighting to an image.
+
+    Highlights:
+    - Named entities (capitalized words) in blue
+    - Numbers and dates in green
+    - Quoted text in purple
+
+    Uses same dark mode settings as render_text_to_image for consistency.
+    """
+    # Get highlights for the full text
+    highlights = identify_highlights(text)
+
+    # Create highlight lookup: char_index -> color
+    char_colors = {}
+    for start, end, htype in highlights:
+        color = HIGHLIGHT_COLORS.get(htype, FG_COLOR)
+        for i in range(start, end):
+            char_colors[i] = color
+
+    # Word wrap while tracking original positions
+    lines_with_positions = []  # List of [(word, start_idx, end_idx), ...]
+    current_pos = 0
+
+    for paragraph in text.split("\n"):
+        if not paragraph.strip():
+            lines_with_positions.append([])
+            current_pos += 1  # for newline
+            continue
+
+        words = []
+        for match in re.finditer(r'\S+', paragraph):
+            word_start = current_pos + match.start()
+            word_end = current_pos + match.end()
+            words.append((match.group(), word_start, word_end))
+
+        # Line wrapping
+        current_line = []
+        for word_info in words:
+            word, start, end = word_info
+            test_line = " ".join(w[0] for w in current_line + [word_info])
+            bbox = FONT.getbbox(test_line)
+            if bbox[2] > max_width - 2 * padding:
+                if current_line:
+                    lines_with_positions.append(current_line)
+                current_line = [word_info]
+            else:
+                current_line.append(word_info)
+        if current_line:
+            lines_with_positions.append(current_line)
+
+        current_pos += len(paragraph) + 1  # +1 for newline
+
+    line_height = FONT_SIZE + line_spacing
+    img_height = len(lines_with_positions) * line_height + 2 * padding
+    img_width = max_width
+
+    img = Image.new("RGB", (img_width, img_height), color=BG_COLOR)
+    draw = ImageDraw.Draw(img)
+
+    y = padding
+    for line_words in lines_with_positions:
+        if not line_words:  # Empty line
+            y += line_height
+            continue
+
+        x = padding
+        for word, start, end in line_words:
+            # Determine color for this word (use first char's highlight)
+            color = char_colors.get(start, FG_COLOR)
+            draw.text((x, y), word, font=FONT, fill=color)
+            bbox = FONT.getbbox(word + " ")
+            x += bbox[2]
+
+        y += line_height
+
+    img.save(output_path)
+
+
 def calculate_valid_vision_tokens(
     width: int, height: int, settings: ModeSettings
 ) -> int:
@@ -1411,6 +1536,173 @@ def cmd_noise(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_augmented(args: argparse.Namespace) -> None:
+    """Run augmented rendering experiment comparing plain vs highlighted text.
+
+    Tests Hypothesis 3: Visual formatting can carry semantic signal that improves
+    downstream task performance.
+
+    Compares two conditions on QuALITY QA:
+    1. Plain vision: Standard dark mode rendering
+    2. Augmented vision: Semantic highlighting (entities=blue, numbers=green, quotes=purple)
+    """
+    data_dir, results_dir = setup_experiment_dirs("augmented")
+
+    logger.info("Loading QuALITY dataset...")
+    try:
+        ds = load_dataset("emozilla/quality", split="validation")
+    except Exception as e:
+        logger.error(f"Error loading QuALITY dataset: {e}")
+        return
+
+    # Group questions by article (same as cmd_quality)
+    articles_dict = {}
+    for item in ds:
+        article_hash = hashlib.md5(item["article"][:100].encode()).hexdigest()[:8]
+        if article_hash not in articles_dict:
+            articles_dict[article_hash] = {"article": item["article"], "questions": []}
+        articles_dict[article_hash]["questions"].append({
+            "question": item["question"],
+            "options": item["options"],
+            "gold_label": item["answer"],  # Note: QuALITY uses "answer" not "gold_label"
+        })
+
+    # Filter for articles with enough questions
+    articles = []
+    for article_hash, article_data in articles_dict.items():
+        if len(article_data["questions"]) >= args.questions_per_article:
+            articles.append({"hash": article_hash, **article_data})
+        if len(articles) >= args.num_articles:
+            break
+
+    model, tokenizer = load_model()
+    settings = MODE_SETTINGS[args.mode]
+
+    results = {
+        "mode": args.mode,
+        "articles": [],
+        "summary": {},
+    }
+
+    stats = {
+        "plain_correct": 0,
+        "augmented_correct": 0,
+        "text_correct": 0,
+        "total": 0,
+    }
+
+    logger.info(f"AUGMENTED RENDERING EXPERIMENT: Mode={args.mode}")
+    logger.info(f"Articles: {len(articles)}, Questions/article: {args.questions_per_article}")
+    logger.info("=" * 70)
+
+    for article_idx, item in enumerate(articles):
+        article_text = item["article"]
+        article_hash = item["hash"]
+
+        logger.info(f"\nArticle {article_idx + 1}/{len(articles)}: {article_hash}")
+
+        # Render plain and augmented versions
+        plain_img_path = data_dir / f"article_{article_hash}_plain.png"
+        augmented_img_path = data_dir / f"article_{article_hash}_augmented.png"
+
+        if not plain_img_path.exists():
+            render_text_to_image(article_text, str(plain_img_path))
+        if not augmented_img_path.exists():
+            render_augmented_text_to_image(article_text, str(augmented_img_path))
+
+        # Process questions
+        questions = item["questions"][: args.questions_per_article]
+
+        for q_idx, q in enumerate(questions):
+            question = q["question"]
+            options = q["options"]
+            correct = q["gold_label"]
+
+            options_str = "\n".join(f"{i}. {opt}" for i, opt in enumerate(options))
+            prompt_suffix = f"\n\nQuestion: {question}\nOptions:\n{options_str}\n\nAnswer with just the number (0, 1, 2, or 3):"
+
+            # 1. Plain vision
+            plain_prompt = f"<image>{prompt_suffix}"
+            plain_output, _, _ = run_inference(
+                plain_prompt, str(plain_img_path), mode=args.mode, model=model, tokenizer=tokenizer
+            )
+            plain_answer = parse_qa_answer(plain_output)
+            plain_correct = plain_answer == correct
+
+            # 2. Augmented vision
+            aug_prompt = f"<image>{prompt_suffix}"
+            aug_output, _, _ = run_inference(
+                aug_prompt, str(augmented_img_path), mode=args.mode, model=model, tokenizer=tokenizer
+            )
+            aug_answer = parse_qa_answer(aug_output)
+            aug_correct = aug_answer == correct
+
+            # 3. Text-only baseline
+            text_prompt = f"<image>\n{article_text}{prompt_suffix}"
+            text_output, _, _ = run_inference(
+                text_prompt, "", mode="text", model=model, tokenizer=tokenizer
+            )
+            text_answer = parse_qa_answer(text_output)
+            text_correct = text_answer == correct
+
+            # Log results
+            p_mark = "✓" if plain_correct else "✗"
+            a_mark = "✓" if aug_correct else "✗"
+            t_mark = "✓" if text_correct else "✗"
+            logger.info(f"  Q{q_idx + 1}: Plain={plain_answer}{p_mark} Aug={aug_answer}{a_mark} Text={text_answer}{t_mark} (correct={correct})")
+
+            stats["plain_correct"] += int(plain_correct)
+            stats["augmented_correct"] += int(aug_correct)
+            stats["text_correct"] += int(text_correct)
+            stats["total"] += 1
+
+        results["articles"].append({
+            "hash": article_hash,
+            "questions": len(questions),
+        })
+
+    # Summary
+    n = stats["total"]
+    if n > 0:
+        plain_acc = stats["plain_correct"] / n * 100
+        aug_acc = stats["augmented_correct"] / n * 100
+        text_acc = stats["text_correct"] / n * 100
+
+        results["summary"] = {
+            "total_questions": n,
+            "plain_accuracy": round(plain_acc, 1),
+            "augmented_accuracy": round(aug_acc, 1),
+            "text_accuracy": round(text_acc, 1),
+            "plain_correct": stats["plain_correct"],
+            "augmented_correct": stats["augmented_correct"],
+            "text_correct": stats["text_correct"],
+        }
+
+        logger.info("\n" + "=" * 70)
+        logger.info("AUGMENTED RENDERING EXPERIMENT RESULTS")
+        logger.info("=" * 70)
+        logger.info(f"Total questions: {n}")
+        logger.info("")
+        logger.info(f"{'Condition':<20} | {'Accuracy':>10} | {'Correct':>10}")
+        logger.info("-" * 50)
+        logger.info(f"{'Plain Vision':<20} | {plain_acc:>9.1f}% | {stats['plain_correct']:>5}/{n}")
+        logger.info(f"{'Augmented Vision':<20} | {aug_acc:>9.1f}% | {stats['augmented_correct']:>5}/{n}")
+        logger.info(f"{'Text Only':<20} | {text_acc:>9.1f}% | {stats['text_correct']:>5}/{n}")
+        logger.info("")
+
+        # Analysis
+        if aug_acc > plain_acc:
+            logger.info(f"✓ Augmented rendering improves accuracy by +{aug_acc - plain_acc:.1f}%")
+        elif aug_acc == plain_acc:
+            logger.info("No difference between plain and augmented rendering")
+        else:
+            logger.info(f"Plain rendering better than augmented by +{plain_acc - aug_acc:.1f}%")
+
+    save_experiment_results(
+        results, results_dir, f"augmented_{args.mode}_{args.num_articles}articles.json"
+    )
+
+
 def generate_cell_lookup_qa(header: list[str], rows: list[list[str]], seed: int = 42) -> tuple[str, str]:
     """Generate a cell lookup question that can be answered from visible data.
 
@@ -2207,6 +2499,17 @@ def main() -> None:
         help="Number of tables to evaluate"
     )
 
+    # Augmented rendering experiment command (Experiment C)
+    augmented_parser = subparsers.add_parser(
+        "augmented", help="Run augmented rendering experiment (Experiment C)"
+    )
+    augmented_parser.add_argument(
+        "--mode", type=str, default="large", choices=EXPERIMENT_MODES,
+        help="Vision mode to use"
+    )
+    augmented_parser.add_argument("--num-articles", type=int, default=3)
+    augmented_parser.add_argument("--questions-per-article", type=int, default=3)
+
     # Reproduce command
     reproduce_parser = subparsers.add_parser(
         "reproduce", help="Run a suite of experiments to reproduce paper results"
@@ -2233,6 +2536,8 @@ def main() -> None:
         cmd_noise(args)
     elif args.command == "tables":
         cmd_tables(args)
+    elif args.command == "augmented":
+        cmd_augmented(args)
     elif args.command == "reproduce":
         cmd_reproduce(args)
     else:
