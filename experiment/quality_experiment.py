@@ -1,157 +1,27 @@
 """QuALITY long-document experiment: Vision tokens vs text tokens for context compression."""
 
-import json
 import hashlib
-import platform
+import json
 import sys
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont
+
 from datasets import load_dataset
+from PIL import Image
+
+from .utils import MODE_SETTINGS, load_model, render_text_to_image
 
 # Unbuffered output
 sys.stdout.reconfigure(line_buffering=True)
 
-_model = None
-_tokenizer = None
-
-MODE_SETTINGS = {
-    "tiny": {"base_size": 512, "image_size": 512, "vision_tokens": 64},
-    "small": {"base_size": 640, "image_size": 640, "vision_tokens": 100},
-    "base": {"base_size": 1024, "image_size": 1024, "vision_tokens": 256},
-    "large": {"base_size": 1280, "image_size": 1280, "vision_tokens": 400},
-}
-
-
-def _get_mono_font_paths():
-    """Get monospace font paths based on the current platform."""
-    system = platform.system()
-    if system == "Linux":
-        return [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
-            "/usr/share/fonts/truetype/freefont/FreeMono.ttf",
-        ]
-    elif system == "Darwin":  # macOS
-        return [
-            "/System/Library/Fonts/Menlo.ttc",
-            "/System/Library/Fonts/Monaco.ttf",
-            "/Library/Fonts/Courier New.ttf",
-        ]
-    elif system == "Windows":
-        return [
-            "C:/Windows/Fonts/consola.ttf",
-            "C:/Windows/Fonts/cour.ttf",
-            "C:/Windows/Fonts/lucon.ttf",
-        ]
-    return []
-
-
-FONT_PATHS = _get_mono_font_paths()
-
-
-def get_font(size: int = 14):
-    """Load a monospace font of the specified size, with fallback to default.
-
-    Args:
-        size: Font size in points
-
-    Returns:
-        PIL ImageFont object
-    """
-    for path in FONT_PATHS:
-        try:
-            return ImageFont.truetype(path, size)
-        except OSError:
-            # Font file not found or cannot be read
-            continue
-        except IOError:
-            # I/O error reading font file
-            continue
-
-    print("Warning: No monospace font found, using default font", file=sys.stderr)
-    return ImageFont.load_default()
-
-
-def load_model():
-    global _model, _tokenizer
-    if _model is not None:
-        return _model, _tokenizer
-
-    import torch
-    from transformers import AutoModel, AutoTokenizer
-
-    model_name = "deepseek-ai/DeepSeek-OCR"
-    print(f"Loading model from {model_name}...")
-
-    _tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-    _model = AutoModel.from_pretrained(
-        model_name,
-        attn_implementation="eager",
-        trust_remote_code=True,
-        use_safetensors=True,
-        torch_dtype=torch.bfloat16,
-    )
-    _model = _model.eval().cuda()
-    # Enable torch compile for faster inference
-    # _model = torch.compile(_model, mode="reduce-overhead")
-    return _model, _tokenizer
-
-
-def render_long_text_to_image(
-    text: str,
-    output_path: str,
-    font_size: int = 12,
-    max_width: int = 1200,
-    max_height: int = 1600,
-    padding: int = 30,
-    line_spacing: int = 4,
-    bg_color: str = "#1e1e1e",
-    fg_color: str = "#d4d4d4",
-) -> tuple:
-    """Render long text to a single tall image. Returns (width, height, num_lines)."""
-    font = get_font(font_size)
-
-    # Wrap text to fit width
-    lines = []
-    for paragraph in text.split("\n"):
-        if not paragraph.strip():
-            lines.append("")
-            continue
-        words = paragraph.split()
-        current_line = []
-        for word in words:
-            test_line = " ".join(current_line + [word])
-            bbox = font.getbbox(test_line)
-            if bbox[2] > max_width - 2 * padding:
-                if current_line:
-                    lines.append(" ".join(current_line))
-                current_line = [word]
-            else:
-                current_line.append(word)
-        if current_line:
-            lines.append(" ".join(current_line))
-
-    line_height = font_size + line_spacing
-    img_height = len(lines) * line_height + 2 * padding
-    img_width = max_width
-
-    img = Image.new("RGB", (img_width, img_height), color=bg_color)
-    draw = ImageDraw.Draw(img)
-
-    y = padding
-    for line in lines:
-        draw.text((padding, y), line, font=font, fill=fg_color)
-        y += line_height
-
-    img.save(output_path)
-    return img_width, img_height, len(lines)
+# Overhead estimate: ~100 tokens for question formatting, options list, and prompt template
+# Breakdown: "Question: " (~3) + question (~20-40) + "Options:" (~2) + 4 options (~40) + "Answer..." (~5)
+PROMPT_OVERHEAD_TOKENS = 100
 
 
 def run_text_condition(context: str, question: str, options: list) -> dict:
     """Run QA with text context."""
     model, tokenizer = load_model()
 
-    # Format multiple choice question
     options_text = "\n".join(f"{i}. {opt}" for i, opt in enumerate(options))
     prompt = f"""<image>
 {context}
@@ -181,10 +51,6 @@ Answer with just the option number (0, 1, 2, or 3):"""
         test_compress=True,
         eval_mode=True,
     )
-
-    # Overhead estimate: ~100 tokens for question formatting, options list, and prompt template
-    # Breakdown: "Question: " (~3) + question (~20-40) + "Options:" (~2) + 4 options (~40) + "Answer..." (~5)
-    PROMPT_OVERHEAD_TOKENS = 100
 
     return {
         "answer": output.strip(),
@@ -223,9 +89,6 @@ Answer with just the option number (0, 1, 2, or 3):"""
         eval_mode=True,
     )
 
-    # Overhead estimate: ~100 tokens for question formatting, options list, and prompt template
-    PROMPT_OVERHEAD_TOKENS = 100
-
     return {
         "answer": output.strip(),
         "vision_tokens": settings["vision_tokens"],
@@ -236,7 +99,6 @@ Answer with just the option number (0, 1, 2, or 3):"""
 def parse_answer(response: str) -> int:
     """Extract answer number from response."""
     response = response.strip()
-    # Try to find a digit 0-3
     for char in response:
         if char in "0123":
             return int(char)
@@ -284,7 +146,6 @@ def run_quality_experiment(
 
     print(f"Found {len(articles)} unique articles")
 
-    # Select articles
     article_items = list(articles.items())[:num_articles]
 
     results = {"mode": mode, "articles": {}, "summary": {}}
@@ -315,7 +176,7 @@ def run_quality_experiment(
         # Render article to image (dark mode, small font for density)
         img_path = data_dir / f"{article_hash}.png"
         if not img_path.exists():
-            w, h, lines = render_long_text_to_image(article, str(img_path))
+            w, h, lines = render_text_to_image(article, str(img_path))
             print(f"  Rendered: {w}x{h}px, {lines} lines")
 
         article_results = {"questions": [], "text_correct": 0, "vision_correct": 0}
@@ -328,7 +189,6 @@ def run_quality_experiment(
             print(f"\n  Q: {question[:70]}...")
             print(f"  Expected: {expected} ({options[expected][:40]}...)")
 
-            # Run both conditions
             text_result = run_text_condition(article, question, options)
             vision_result = run_vision_condition(str(img_path), question, options, mode)
 
