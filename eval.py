@@ -594,6 +594,239 @@ def cmd_quality(args: argparse.Namespace) -> None:
     )
 
 
+def truncate_text(text: str, tokenizer: AutoTokenizer, max_tokens: int, from_end: bool = False) -> str:
+    """Truncate text to max_tokens, either from beginning or end.
+
+    Args:
+        text: The text to truncate.
+        tokenizer: The tokenizer to use for token counting.
+        max_tokens: Maximum number of tokens to keep.
+        from_end: If True, keep last max_tokens; if False, keep first max_tokens.
+
+    Returns:
+        Truncated text decoded back to string.
+    """
+    tokens = tokenizer.encode(text, add_special_tokens=False)
+    if len(tokens) <= max_tokens:
+        return text
+
+    if from_end:
+        truncated_tokens = tokens[-max_tokens:]
+    else:
+        truncated_tokens = tokens[:max_tokens]
+
+    return tokenizer.decode(truncated_tokens)
+
+
+def cmd_truncation(args: argparse.Namespace) -> None:
+    """Run truncation baseline experiment comparing vision vs truncated text on QuALITY.
+
+    Tests four conditions:
+    1. Full text (if fits in context)
+    2. Truncated text - first N tokens (beginning of article)
+    3. Truncated text - last N tokens (end of article)
+    4. Vision (rendered full article, compressed)
+
+    This addresses Lee et al.'s critique by testing whether vision beats truncation
+    on QA tasks where full-document coverage matters.
+    """
+    data_dir, results_dir = setup_experiment_dirs("truncation")
+
+    logger.info("Loading QuALITY dataset...")
+    try:
+        ds = load_dataset("emozilla/quality", split="validation")
+    except Exception as e:
+        logger.error(f"Error loading QuALITY dataset: {e}")
+        return
+
+    # Group questions by article
+    articles = {}
+    for item in ds:
+        article_hash = hashlib.md5(item["article"][:100].encode()).hexdigest()[:8]
+        if article_hash not in articles:
+            articles[article_hash] = {"article": item["article"], "questions": []}
+        articles[article_hash]["questions"].append(
+            {
+                "question": item["question"],
+                "options": item["options"],
+                "answer": item["answer"],
+            }
+        )
+
+    logger.info(f"Found {len(articles)} unique articles")
+    article_items = list(articles.items())[: args.num_articles]
+
+    model, tokenizer = load_model()
+    settings = MODE_SETTINGS[args.mode]
+
+    # Token budget for truncation = vision tokens for this mode
+    token_budget = settings.tokens
+    logger.info(f"Token budget for truncation: {token_budget} (matching {args.mode} mode vision tokens)")
+
+    results = {"mode": args.mode, "token_budget": token_budget, "articles": {}, "summary": {}}
+    stats = {
+        "full_text_correct": 0,
+        "trunc_first_correct": 0,
+        "trunc_last_correct": 0,
+        "vision_correct": 0,
+        "total": 0,
+    }
+
+    logger.info(f"TRUNCATION EXPERIMENT: Mode={args.mode}, Articles={args.num_articles}, Token Budget={token_budget}")
+
+    for article_hash, article_data in article_items:
+        article = article_data["article"]
+        questions = article_data["questions"][: args.questions_per_article]
+
+        logger.info(f"\nArticle: {article_hash} ({len(article.split())} words)")
+
+        # Render image for vision condition
+        img_path = data_dir / f"{article_hash}.png"
+        if not img_path.exists():
+            render_text_to_image(article, str(img_path))
+
+        # Calculate article token count
+        article_tokens = len(tokenizer.encode(article, add_special_tokens=False))
+
+        # Prepare truncated versions
+        trunc_first = truncate_text(article, tokenizer, token_budget, from_end=False)
+        trunc_last = truncate_text(article, tokenizer, token_budget, from_end=True)
+
+        trunc_first_tokens = len(tokenizer.encode(trunc_first, add_special_tokens=False))
+        trunc_last_tokens = len(tokenizer.encode(trunc_last, add_special_tokens=False))
+
+        logger.info(f"  Article tokens: {article_tokens}")
+        logger.info(f"  Truncated (first): {trunc_first_tokens} tokens")
+        logger.info(f"  Truncated (last): {trunc_last_tokens} tokens")
+        logger.info(f"  Vision: {settings.tokens} tokens")
+
+        article_results = {
+            "questions": [],
+            "article_tokens": article_tokens,
+            "full_text_correct": 0,
+            "trunc_first_correct": 0,
+            "trunc_last_correct": 0,
+            "vision_correct": 0,
+        }
+
+        for qa in questions:
+            question, options, expected = qa["question"], qa["options"], qa["answer"]
+            options_text = "\n".join(f"{i}. {opt}" for i, opt in enumerate(options))
+
+            question_suffix = f"\n\nQuestion: {question}\n\nOptions:\n{options_text}\n\nAnswer with just the option number (0, 1, 2, or 3):"
+
+            # Condition 1: Full text
+            full_prompt = f"<image>\n{article}{question_suffix}"
+            full_output, _, _ = run_inference(
+                full_prompt, "", mode="text", model=model, tokenizer=tokenizer
+            )
+            full_pred = next((int(c) for c in full_output.strip() if c in "0123"), -1)
+            full_correct = full_pred == expected
+
+            # Condition 2: Truncated first N tokens
+            trunc_first_prompt = f"<image>\n{trunc_first}{question_suffix}"
+            trunc_first_output, _, _ = run_inference(
+                trunc_first_prompt, "", mode="text", model=model, tokenizer=tokenizer
+            )
+            trunc_first_pred = next((int(c) for c in trunc_first_output.strip() if c in "0123"), -1)
+            trunc_first_correct = trunc_first_pred == expected
+
+            # Condition 3: Truncated last N tokens
+            trunc_last_prompt = f"<image>\n{trunc_last}{question_suffix}"
+            trunc_last_output, _, _ = run_inference(
+                trunc_last_prompt, "", mode="text", model=model, tokenizer=tokenizer
+            )
+            trunc_last_pred = next((int(c) for c in trunc_last_output.strip() if c in "0123"), -1)
+            trunc_last_correct = trunc_last_pred == expected
+
+            # Condition 4: Vision (full article rendered)
+            vision_prompt = f"<image>{question_suffix}"
+            vision_output, _, _ = run_inference(
+                vision_prompt, str(img_path), mode=args.mode, model=model, tokenizer=tokenizer
+            )
+            vision_pred = next((int(c) for c in vision_output.strip() if c in "0123"), -1)
+            vision_correct = vision_pred == expected
+
+            logger.info(f"  Q: {question[:50]}...")
+            logger.info(
+                f"    Full: {full_pred} {'✓' if full_correct else '✗'} | "
+                f"First-{token_budget}: {trunc_first_pred} {'✓' if trunc_first_correct else '✗'} | "
+                f"Last-{token_budget}: {trunc_last_pred} {'✓' if trunc_last_correct else '✗'} | "
+                f"Vision: {vision_pred} {'✓' if vision_correct else '✗'}"
+            )
+
+            # Store results
+            article_results["questions"].append({
+                "question": question[:100],
+                "expected": expected,
+                "full_pred": full_pred,
+                "trunc_first_pred": trunc_first_pred,
+                "trunc_last_pred": trunc_last_pred,
+                "vision_pred": vision_pred,
+                "full_correct": full_correct,
+                "trunc_first_correct": trunc_first_correct,
+                "trunc_last_correct": trunc_last_correct,
+                "vision_correct": vision_correct,
+            })
+
+            # Update counts
+            if full_correct:
+                article_results["full_text_correct"] += 1
+                stats["full_text_correct"] += 1
+            if trunc_first_correct:
+                article_results["trunc_first_correct"] += 1
+                stats["trunc_first_correct"] += 1
+            if trunc_last_correct:
+                article_results["trunc_last_correct"] += 1
+                stats["trunc_last_correct"] += 1
+            if vision_correct:
+                article_results["vision_correct"] += 1
+                stats["vision_correct"] += 1
+            stats["total"] += 1
+
+        results["articles"][article_hash] = article_results
+
+    # Summary
+    n = stats["total"]
+    if n > 0:
+        full_acc = round(stats["full_text_correct"] / n * 100, 1)
+        trunc_first_acc = round(stats["trunc_first_correct"] / n * 100, 1)
+        trunc_last_acc = round(stats["trunc_last_correct"] / n * 100, 1)
+        vision_acc = round(stats["vision_correct"] / n * 100, 1)
+
+        results["summary"] = {
+            "total_questions": n,
+            "token_budget": token_budget,
+            "full_text_accuracy": full_acc,
+            "trunc_first_accuracy": trunc_first_acc,
+            "trunc_last_accuracy": trunc_last_acc,
+            "vision_accuracy": vision_acc,
+            "vision_beats_trunc_first": vision_acc > trunc_first_acc,
+            "vision_beats_trunc_last": vision_acc > trunc_last_acc,
+            "vision_beats_both_truncations": vision_acc > max(trunc_first_acc, trunc_last_acc),
+        }
+
+        logger.info("\n" + "=" * 60)
+        logger.info("TRUNCATION EXPERIMENT RESULTS")
+        logger.info("=" * 60)
+        logger.info(f"Token budget: {token_budget} (matching {args.mode} mode)")
+        logger.info(f"Total questions: {n}")
+        logger.info("")
+        logger.info(f"{'Condition':<20} | {'Accuracy':<10} | {'Correct':<10}")
+        logger.info("-" * 45)
+        logger.info(f"{'Full text':<20} | {full_acc:>8}% | {stats['full_text_correct']}/{n}")
+        logger.info(f"{'Trunc (first N)':<20} | {trunc_first_acc:>8}% | {stats['trunc_first_correct']}/{n}")
+        logger.info(f"{'Trunc (last N)':<20} | {trunc_last_acc:>8}% | {stats['trunc_last_correct']}/{n}")
+        logger.info(f"{'Vision':<20} | {vision_acc:>8}% | {stats['vision_correct']}/{n}")
+        logger.info("")
+        logger.info(f"Vision beats truncation (first): {vision_acc > trunc_first_acc}")
+        logger.info(f"Vision beats truncation (last): {vision_acc > trunc_last_acc}")
+
+        save_experiment_results(
+            results, results_dir, f"truncation_{args.mode}_{args.num_articles}articles.json"
+        )
+
+
 def cmd_finewiki(args: argparse.Namespace) -> None:
     """Run FineWiki language modeling experiment comparing text vs vision continuation."""
     data_dir, results_dir = setup_experiment_dirs("finewiki")
@@ -1124,6 +1357,17 @@ def main() -> None:
         "--num-articles", type=int, default=10, help="Number of documents to evaluate"
     )
 
+    # Truncation baseline command
+    trunc_parser = subparsers.add_parser(
+        "truncation", help="Run truncation baseline experiment (Experiment D)"
+    )
+    trunc_parser.add_argument(
+        "--mode", type=str, default="large", choices=EXPERIMENT_MODES,
+        help="Vision mode (determines token budget for truncation)"
+    )
+    trunc_parser.add_argument("--num-articles", type=int, default=5)
+    trunc_parser.add_argument("--questions-per-article", type=int, default=5)
+
     # Reproduce command
     reproduce_parser = subparsers.add_parser(
         "reproduce", help="Run a suite of experiments to reproduce paper results"
@@ -1144,6 +1388,8 @@ def main() -> None:
         cmd_finewiki(args)
     elif args.command == "omnidocbench":
         cmd_omnidocbench(args)
+    elif args.command == "truncation":
+        cmd_truncation(args)
     elif args.command == "reproduce":
         cmd_reproduce(args)
     else:

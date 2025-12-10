@@ -192,12 +192,22 @@ Each experiment targets a gap in Lee et al.'s analysis, seeking conditions where
 
 **Gap addressed:** We didn't directly compare to truncation—the baseline Lee et al. showed vision fails against.
 
+**Critical insight:** Lee et al. tested **language modeling** (next-token prediction), where recency dominates—truncating to the last N tokens retains the most useful context. But for **QA tasks** like QuALITY, questions target content throughout the document. This changes the calculus:
+
+| Task Type | What Matters | Truncation Impact | Vision Impact |
+|-----------|--------------|-------------------|---------------|
+| Language Modeling | Recent context | Minimal loss | Compression loss |
+| QA (full-document) | Coverage | **Severe loss** | Retains coverage |
+
+Our hypothesis: Vision's advantage emerges on tasks requiring **full-document coverage**, not recency.
+
 *   **Method:** For QuALITY, compare:
     - Full text (if fits in context)
-    - Truncated text (last N tokens matching vision token budget)
-    - Vision (rendered full article)
-*   **Purpose:** Establish whether our results replicate Lee et al.'s truncation finding, or whether task/model differences yield different conclusions.
-*   **Contribution:** Direct engagement with the core critique.
+    - Truncated text — **first** N tokens (beginning of article)
+    - Truncated text — **last** N tokens (end of article)
+    - Vision (rendered full article, compressed)
+*   **Purpose:** Test whether vision beats truncation when coverage matters, even if Lee et al. showed it fails for LM tasks.
+*   **Contribution:** Maps the **task-dependent boundary** where vision outperforms text compression.
 
 ---
 
