@@ -79,7 +79,7 @@ def run_all_experiments(mode: str = 'small', config_type: str = 'all'):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', default='small', choices=['tiny', 'small', 'base'])
+    parser.add_argument('--mode', default='small', choices=['tiny', 'small', 'base', 'large'])
     parser.add_argument('--config-type', default='all',
                         choices=['all', 'fonts', 'sizes', 'colors'],
                         help='Which configuration type to test')

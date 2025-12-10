@@ -13,6 +13,7 @@ MODE_SETTINGS = {
     'tiny': {'base_size': 512, 'image_size': 512, 'vision_tokens': 64},
     'small': {'base_size': 640, 'image_size': 640, 'vision_tokens': 100},
     'base': {'base_size': 1024, 'image_size': 1024, 'vision_tokens': 256},
+    'large': {'base_size': 1280, 'image_size': 1280, 'vision_tokens': 400},
 }
 
 
@@ -211,7 +212,7 @@ def run_experiment(mode: str = 'small', data_config: str = 'default'):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', default='small', choices=['tiny', 'small', 'base'])
+    parser.add_argument('--mode', default='small', choices=['tiny', 'small', 'base', 'large'])
     parser.add_argument('--data-config', default='default')
     args = parser.parse_args()
     run_experiment(args.mode, args.data_config)
