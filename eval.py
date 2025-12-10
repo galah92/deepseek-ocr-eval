@@ -12,10 +12,11 @@ Usage:
 
 import argparse
 import os
-from pathlib import Path
 
 
-def calculate_valid_vision_tokens(width: int, height: int, base_size: int, image_size: int, crop_mode: bool) -> int:
+def calculate_valid_vision_tokens(
+    width: int, height: int, base_size: int, image_size: int, crop_mode: bool
+) -> int:
     """
     Calculate valid vision tokens based on image dimensions and mode.
 
@@ -56,19 +57,26 @@ def calculate_valid_vision_tokens(width: int, height: int, base_size: int, image
     return valid_tokens
 
 
-def calculate_num_crops(width: int, height: int, tile_size: int = 640, min_crops: int = 2, max_crops: int = 6) -> int:
+def calculate_num_crops(
+    width: int,
+    height: int,
+    tile_size: int = 640,
+    min_crops: int = 2,
+    max_crops: int = 6,
+) -> int:
     """Calculate number of image crops for dynamic resolution mode."""
     aspect_ratio = width / height
 
     target_ratios = set(
-        (i, j) for n in range(min_crops, max_crops + 1)
+        (i, j)
+        for n in range(min_crops, max_crops + 1)
         for i in range(1, n + 1)
         for j in range(1, n + 1)
         if min_crops <= i * j <= max_crops
     )
 
     best_ratio = (1, 1)
-    best_diff = float('inf')
+    best_diff = float("inf")
 
     for ratio in target_ratios:
         target_ar = ratio[0] / ratio[1]
@@ -92,13 +100,33 @@ def get_mode_settings(mode: str) -> dict:
     - Gundam: dynamic (local + global views)
     """
     modes = {
-        'tiny':   {'base_size': 512,  'image_size': 512,  'crop_mode': False, 'tokens': 64},
-        'small':  {'base_size': 640,  'image_size': 640,  'crop_mode': False, 'tokens': 100},
-        'base':   {'base_size': 1024, 'image_size': 1024, 'crop_mode': False, 'tokens': 256},
-        'large':  {'base_size': 1280, 'image_size': 1280, 'crop_mode': False, 'tokens': 400},
-        'gundam': {'base_size': 1024, 'image_size': 640,  'crop_mode': True,  'tokens': 'dynamic'},
+        "tiny": {"base_size": 512, "image_size": 512, "crop_mode": False, "tokens": 64},
+        "small": {
+            "base_size": 640,
+            "image_size": 640,
+            "crop_mode": False,
+            "tokens": 100,
+        },
+        "base": {
+            "base_size": 1024,
+            "image_size": 1024,
+            "crop_mode": False,
+            "tokens": 256,
+        },
+        "large": {
+            "base_size": 1280,
+            "image_size": 1280,
+            "crop_mode": False,
+            "tokens": 400,
+        },
+        "gundam": {
+            "base_size": 1024,
+            "image_size": 640,
+            "crop_mode": True,
+            "tokens": "dynamic",
+        },
     }
-    return modes.get(mode, modes['small'])
+    return modes.get(mode, modes["small"])
 
 
 def calculate_edit_distance(output: str, ground_truth: str) -> dict:
@@ -116,7 +144,7 @@ def calculate_edit_distance(output: str, ground_truth: str) -> dict:
         import Levenshtein
     except ImportError:
         print("Error: python-levenshtein not installed. Run: uv add python-levenshtein")
-        return {'edit_distance': -1, 'normalized_ed': -1, 'precision': -1}
+        return {"edit_distance": -1, "normalized_ed": -1, "precision": -1}
 
     edit_dist = Levenshtein.distance(output, ground_truth)
     max_len = max(len(output), len(ground_truth))
@@ -124,9 +152,9 @@ def calculate_edit_distance(output: str, ground_truth: str) -> dict:
     precision = 1 - normalized_ed
 
     return {
-        'edit_distance': edit_dist,
-        'normalized_ed': round(normalized_ed, 4),
-        'precision': round(precision * 100, 2)
+        "edit_distance": edit_dist,
+        "normalized_ed": round(normalized_ed, 4),
+        "precision": round(precision * 100, 2),
     }
 
 
@@ -150,16 +178,16 @@ def run_inference(image_path: str, mode: str, prompt: str = "<image>\nFree OCR."
     import torch
     from PIL import Image
 
-    model_name = 'deepseek-ai/DeepSeek-OCR'
+    model_name = "deepseek-ai/DeepSeek-OCR"
     settings = get_mode_settings(mode)
 
     print(f"Loading model from {model_name}...")
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     model = AutoModel.from_pretrained(
         model_name,
-        attn_implementation='eager',
+        attn_implementation="eager",
         trust_remote_code=True,
-        use_safetensors=True
+        use_safetensors=True,
     )
     model = model.eval().cuda().to(torch.bfloat16)
 
@@ -167,10 +195,11 @@ def run_inference(image_path: str, mode: str, prompt: str = "<image>\nFree OCR."
     width, height = img.size
 
     vision_tokens = calculate_valid_vision_tokens(
-        width, height,
-        settings['base_size'],
-        settings['image_size'],
-        settings['crop_mode']
+        width,
+        height,
+        settings["base_size"],
+        settings["image_size"],
+        settings["crop_mode"],
     )
 
     print(f"Running inference (mode={mode}, vision_tokens={vision_tokens})...")
@@ -178,13 +207,13 @@ def run_inference(image_path: str, mode: str, prompt: str = "<image>\nFree OCR."
         tokenizer,
         prompt=prompt,
         image_file=image_path,
-        output_path='/tmp/deepseek_ocr_output',
-        base_size=settings['base_size'],
-        image_size=settings['image_size'],
-        crop_mode=settings['crop_mode'],
+        output_path="/tmp/deepseek_ocr_output",
+        base_size=settings["base_size"],
+        image_size=settings["image_size"],
+        crop_mode=settings["crop_mode"],
         save_results=False,
         test_compress=True,
-        eval_mode=True
+        eval_mode=True,
     )
 
     output_tokens = tokenize_text(output, tokenizer)
@@ -200,32 +229,37 @@ def dry_run(image_path: str, mode: str, ground_truth: str = None):
     width, height = img.size
 
     vision_tokens = calculate_valid_vision_tokens(
-        width, height,
-        settings['base_size'],
-        settings['image_size'],
-        settings['crop_mode']
+        width,
+        height,
+        settings["base_size"],
+        settings["image_size"],
+        settings["crop_mode"],
     )
 
     print("=" * 60)
     print("DeepSeek-OCR Evaluation (Dry Run)")
     print("=" * 60)
-    print(f"\n[INPUT]")
+    print("\n[INPUT]")
     print(f"  Image: {image_path}")
     print(f"  Dimensions: {width} x {height}")
     print(f"  Mode: {mode}")
-    print(f"  Settings: base_size={settings['base_size']}, crop_mode={settings['crop_mode']}")
-    print(f"\n[VISION TOKENS]")
+    print(
+        f"  Settings: base_size={settings['base_size']}, crop_mode={settings['crop_mode']}"
+    )
+    print("\n[VISION TOKENS]")
     print(f"  Valid vision tokens: {vision_tokens}")
 
     if ground_truth:
         gt_tokens = tokenize_text(ground_truth)
         compression_ratio = gt_tokens / vision_tokens if vision_tokens > 0 else 0
 
-        print(f"\n[GROUND TRUTH]")
+        print("\n[GROUND TRUTH]")
         print(f"  Text length: {len(ground_truth)} characters")
         print(f"  Approx tokens: {gt_tokens}")
-        print(f"\n[COMPRESSION]")
-        print(f"  Compression ratio: {gt_tokens} / {vision_tokens} = {compression_ratio:.2f}x")
+        print("\n[COMPRESSION]")
+        print(
+            f"  Compression ratio: {gt_tokens} / {vision_tokens} = {compression_ratio:.2f}x"
+        )
 
         if compression_ratio < 10:
             expected = "~97% (near lossless)"
@@ -240,7 +274,7 @@ def dry_run(image_path: str, mode: str, ground_truth: str = None):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Evaluate DeepSeek-OCR compression ratio and accuracy',
+        description="Evaluate DeepSeek-OCR compression ratio and accuracy",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -252,20 +286,31 @@ Examples:
 
   # With ground truth for accuracy calculation
   uv run python eval.py --image doc.png --ground-truth gt.txt --mode base
-        """
+        """,
     )
-    parser.add_argument('--image', type=str, required=True, help='Path to input image')
-    parser.add_argument('--mode', type=str, default='small',
-                       choices=['tiny', 'small', 'base', 'large', 'gundam'],
-                       help='Resolution mode (default: small)')
-    parser.add_argument('--ground-truth', type=str, default=None,
-                       help='Ground truth text or path to text file')
-    parser.add_argument('--dry-run', action='store_true',
-                       help='Show calculations without running model')
-    parser.add_argument('--prompt', type=str, default='<image>\nFree OCR.',
-                       help='Prompt for OCR')
-    parser.add_argument('--show-output', action='store_true',
-                       help='Show OCR output text')
+    parser.add_argument("--image", type=str, required=True, help="Path to input image")
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default="small",
+        choices=["tiny", "small", "base", "large", "gundam"],
+        help="Resolution mode (default: small)",
+    )
+    parser.add_argument(
+        "--ground-truth",
+        type=str,
+        default=None,
+        help="Ground truth text or path to text file",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Show calculations without running model"
+    )
+    parser.add_argument(
+        "--prompt", type=str, default="<image>\nFree OCR.", help="Prompt for OCR"
+    )
+    parser.add_argument(
+        "--show-output", action="store_true", help="Show OCR output text"
+    )
 
     args = parser.parse_args()
 
@@ -273,7 +318,7 @@ Examples:
     ground_truth = None
     if args.ground_truth:
         if os.path.isfile(args.ground_truth):
-            with open(args.ground_truth, 'r', encoding='utf-8') as f:
+            with open(args.ground_truth, "r", encoding="utf-8") as f:
                 ground_truth = f.read()
         else:
             ground_truth = args.ground_truth
@@ -293,23 +338,23 @@ Examples:
 
     compression_ratio = output_tokens / vision_tokens if vision_tokens > 0 else 0
 
-    print(f"\n[RESULTS]")
+    print("\n[RESULTS]")
     print(f"  Vision tokens: {vision_tokens}")
     print(f"  Output tokens: {output_tokens}")
     print(f"  Compression ratio: {compression_ratio:.2f}x")
 
     if ground_truth:
         metrics = calculate_edit_distance(output, ground_truth)
-        print(f"\n[ACCURACY]")
+        print("\n[ACCURACY]")
         print(f"  Edit distance: {metrics['edit_distance']} characters")
         print(f"  Normalized ED: {metrics['normalized_ed']}")
         print(f"  Precision: {metrics['precision']}%")
 
     if args.show_output:
-        print(f"\n[OCR OUTPUT]")
+        print("\n[OCR OUTPUT]")
         print("-" * 60)
         print(output[:2000] + ("..." if len(output) > 2000 else ""))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

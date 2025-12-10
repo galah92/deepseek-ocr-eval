@@ -19,3 +19,8 @@ dependencies = [
 
 [project.scripts]
 deepseek-ocr-eval = "eval:main"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.8",
+]
