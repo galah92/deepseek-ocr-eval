@@ -11,7 +11,6 @@ from pathlib import Path
 from datasets import load_dataset
 from matplotlib import font_manager
 from PIL import Image, ImageDraw, ImageFont
-from PIL.ImageFont import FreeTypeFont
 from transformers import AutoModel, AutoTokenizer
 
 # Temporary paths for experiments
@@ -73,35 +72,29 @@ def load_model() -> tuple[AutoModel, AutoTokenizer]:
 
 
 # Default rendering settings (dark mode for optimal OCR - see README)
-DEFAULT_FONT_SIZE = 12
-DEFAULT_BG_COLOR = "#1e1e1e"
-DEFAULT_FG_COLOR = "#d4d4d4"
+FONT_SIZE = 12
+BG_COLOR = "#1e1e1e"
+FG_COLOR = "#d4d4d4"
+FONT = ImageFont.truetype(MONO_FONT_PATH, FONT_SIZE)
 
-# Log font config at module load
-_font = ImageFont.truetype(MONO_FONT_PATH, DEFAULT_FONT_SIZE)
 print(
-    f"[Render config] font={_font.getname()[0]}, size={DEFAULT_FONT_SIZE}pt, "
-    f"bg={DEFAULT_BG_COLOR}, fg={DEFAULT_FG_COLOR}, path={MONO_FONT_PATH}"
+    f"[Render config] font={FONT.getname()[0]}, size={FONT_SIZE}pt, "
+    f"bg={BG_COLOR}, fg={FG_COLOR}, path={MONO_FONT_PATH}"
 )
-del _font
 
 
 def render_text_to_image(
     text: str,
     output_path: str,
-    font_size: int = DEFAULT_FONT_SIZE,
     max_width: int = 1200,
     padding: int = 30,
     line_spacing: int = 4,
-    bg_color: str = DEFAULT_BG_COLOR,
-    fg_color: str = DEFAULT_FG_COLOR,
 ) -> tuple[int, int, int]:
     """Render text to image (dark mode for optimal OCR).
 
     Returns:
         Tuple of (image_width, image_height, num_lines).
     """
-    font = ImageFont.truetype(MONO_FONT_PATH, font_size)
 
     lines = []
     for paragraph in text.split("\n"):
@@ -112,7 +105,7 @@ def render_text_to_image(
         current_line = []
         for word in words:
             test_line = " ".join(current_line + [word])
-            bbox = font.getbbox(test_line)
+            bbox = FONT.getbbox(test_line)
             if bbox[2] > max_width - 2 * padding:
                 if current_line:
                     lines.append(" ".join(current_line))
@@ -122,16 +115,16 @@ def render_text_to_image(
         if current_line:
             lines.append(" ".join(current_line))
 
-    line_height = font_size + line_spacing
+    line_height = FONT_SIZE + line_spacing
     img_height = len(lines) * line_height + 2 * padding
     img_width = max_width
 
-    img = Image.new("RGB", (img_width, img_height), color=bg_color)
+    img = Image.new("RGB", (img_width, img_height), color=BG_COLOR)
     draw = ImageDraw.Draw(img)
 
     y = padding
     for line in lines:
-        draw.text((padding, y), line, font=font, fill=fg_color)
+        draw.text((padding, y), line, font=FONT, fill=FG_COLOR)
         y += line_height
 
     img.save(output_path)
