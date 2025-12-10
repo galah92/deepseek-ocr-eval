@@ -3,8 +3,8 @@
 import argparse
 import hashlib
 import json
+import logging
 import os
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,6 +12,14 @@ from datasets import load_dataset
 from matplotlib import font_manager
 from PIL import Image, ImageDraw, ImageFont
 from transformers import AutoModel, AutoTokenizer
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(message)s",
+    datefmt="%H:%M:%S",
+    handlers=[logging.StreamHandler()],
+)
+log = logging.getLogger(__name__)
 
 # Temporary paths for experiments
 TMP_OUTPUT_PATH = "/tmp/deepseek_ocr_output"
@@ -57,7 +65,7 @@ def load_model() -> tuple[AutoModel, AutoTokenizer]:
     import torch
 
     model_name = "deepseek-ai/DeepSeek-OCR"
-    print(f"Loading model from {model_name}...")
+    log.info(f"Loading model from {model_name}...")
 
     _tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     _model = AutoModel.from_pretrained(
@@ -77,7 +85,7 @@ BG_COLOR = "#1e1e1e"
 FG_COLOR = "#d4d4d4"
 FONT = ImageFont.truetype(MONO_FONT_PATH, FONT_SIZE)
 
-print(
+log.info(
     f"[Render config] font={FONT.getname()[0]}, size={FONT_SIZE}pt, "
     f"bg={BG_COLOR}, fg={FG_COLOR}, path={MONO_FONT_PATH}"
 )
@@ -237,7 +245,7 @@ def run_ocr(
 
     vision_tokens = calculate_valid_vision_tokens(width, height, settings)
 
-    print(f"Running inference (mode={mode}, vision_tokens={vision_tokens})...")
+    log.info(f"Running inference (mode={mode}, vision_tokens={vision_tokens})...")
     output = model.infer(
         tokenizer,
         prompt=prompt,
@@ -271,41 +279,41 @@ def cmd_ocr(args: argparse.Namespace) -> None:
         width, height = img.size
         vision_tokens = calculate_valid_vision_tokens(width, height, settings)
 
-        print("=" * 60)
-        print("DeepSeek-OCR Evaluation (Dry Run)")
-        print("=" * 60)
-        print(f"\n[INPUT]\n  Image: {args.image}\n  Dimensions: {width} x {height}")
-        print(f"  Mode: {args.mode}")
-        print(f"\n[VISION TOKENS]\n  Valid vision tokens: {vision_tokens}")
+        log.info("=" * 60)
+        log.info("DeepSeek-OCR Evaluation (Dry Run)")
+        log.info("=" * 60)
+        log.info(f"\n[INPUT]\n  Image: {args.image}\n  Dimensions: {width} x {height}")
+        log.info(f"  Mode: {args.mode}")
+        log.info(f"\n[VISION TOKENS]\n  Valid vision tokens: {vision_tokens}")
 
         if ground_truth:
             gt_tokens = tokenize_text(ground_truth)
             compression = gt_tokens / vision_tokens if vision_tokens > 0 else 0
-            print(f"\n[GROUND TRUTH]\n  Text length: {len(ground_truth)} characters")
-            print(f"  Approx tokens: {gt_tokens}")
-            print(f"\n[COMPRESSION]\n  Compression ratio: {compression:.2f}x")
+            log.info(f"\n[GROUND TRUTH]\n  Text length: {len(ground_truth)} characters")
+            log.info(f"  Approx tokens: {gt_tokens}")
+            log.info(f"\n[COMPRESSION]\n  Compression ratio: {compression:.2f}x")
         return
 
-    print("=" * 60)
-    print("DeepSeek-OCR Evaluation")
-    print("=" * 60)
+    log.info("=" * 60)
+    log.info("DeepSeek-OCR Evaluation")
+    log.info("=" * 60)
 
     output, vision_tokens, output_tokens = run_ocr(args.image, args.mode, args.prompt)
     compression = output_tokens / vision_tokens if vision_tokens > 0 else 0
 
-    print(f"\n[RESULTS]\n  Vision tokens: {vision_tokens}")
-    print(f"  Output tokens: {output_tokens}\n  Compression ratio: {compression:.2f}x")
+    log.info(f"\n[RESULTS]\n  Vision tokens: {vision_tokens}")
+    log.info(f"  Output tokens: {output_tokens}\n  Compression ratio: {compression:.2f}x")
 
     if ground_truth:
         metrics = calculate_edit_distance(output, ground_truth)
-        print(f"\n[ACCURACY]\n  Edit distance: {metrics['edit_distance']} characters")
-        print(
+        log.info(f"\n[ACCURACY]\n  Edit distance: {metrics['edit_distance']} characters")
+        log.info(
             f"  Normalized ED: {metrics['normalized_ed']}\n  Precision: {metrics['precision']}%"
         )
 
     if args.show_output:
-        print(f"\n[OCR OUTPUT]\n{'-' * 60}")
-        print(output[:2000] + ("..." if len(output) > 2000 else ""))
+        log.info(f"\n[OCR OUTPUT]\n{'-' * 60}")
+        log.info(output[:2000] + ("..." if len(output) > 2000 else ""))
 
 
 def _ensure_blank_image() -> str:
@@ -365,11 +373,17 @@ def cmd_quality(args: argparse.Namespace) -> None:
     results_dir = root_dir / "results"
     results_dir.mkdir(exist_ok=True)
 
-    print("Loading QuALITY dataset...")
+    # Add file handler for this run
+    log_path = results_dir / f"quality_{args.mode}_{args.num_articles}articles.log"
+    file_handler = logging.FileHandler(log_path, mode="w")
+    file_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", "%H:%M:%S"))
+    log.addHandler(file_handler)
+
+    log.info("Loading QuALITY dataset...")
     try:
         ds = load_dataset("emozilla/quality", split="validation")
     except Exception as e:
-        print(f"Error loading QuALITY dataset: {e}", file=sys.stderr)
+        log.error(f"Error loading QuALITY dataset: {e}")
         return
 
     # Group questions by article
@@ -386,7 +400,7 @@ def cmd_quality(args: argparse.Namespace) -> None:
             }
         )
 
-    print(f"Found {len(articles)} unique articles")
+    log.info(f"Found {len(articles)} unique articles")
     article_items = list(articles.items())[: args.num_articles]
 
     model, tokenizer = load_model()
@@ -401,15 +415,15 @@ def cmd_quality(args: argparse.Namespace) -> None:
         "total": 0,
     }
 
-    print(f"\n{'=' * 70}")
-    print(f"QUALITY EXPERIMENT: Mode={args.mode}, Articles={args.num_articles}")
-    print("=" * 70)
+    log.info(f"\n{'=' * 70}")
+    log.info(f"QUALITY EXPERIMENT: Mode={args.mode}, Articles={args.num_articles}")
+    log.info("=" * 70)
 
     for article_hash, article_data in article_items:
         article = article_data["article"]
         questions = article_data["questions"][: args.questions_per_article]
 
-        print(
+        log.info(
             f"\n{'─' * 70}\nArticle: {article_hash} ({len(article.split())} words)\n{'─' * 70}"
         )
 
@@ -447,8 +461,8 @@ def cmd_quality(args: argparse.Namespace) -> None:
             text_correct = text_pred == expected
             vision_correct = vision_pred == expected
 
-            print(f"  Q: {question[:60]}...")
-            print(
+            log.info(f"  Q: {question[:60]}...")
+            log.info(
                 f"    Text: {text_pred} {'✓' if text_correct else '✗'}, Vision: {vision_pred} {'✓' if vision_correct else '✗'}"
             )
 
@@ -486,10 +500,12 @@ def cmd_quality(args: argparse.Namespace) -> None:
     with open(output_path, "w") as f:
         json.dump(results, f, indent=2)
 
-    print(
+    log.info(
         f"\n{'=' * 70}\nRESULTS: Text={text_acc}%, Vision={vision_acc}%, Compression={compression:.1f}x"
     )
-    print(f"Saved to: {output_path}")
+    log.info(f"Saved to: {output_path}")
+    log.info(f"Log saved to: {log_path}")
+    log.removeHandler(file_handler)
 
 
 def cmd_finewiki(args: argparse.Namespace) -> None:
@@ -500,26 +516,32 @@ def cmd_finewiki(args: argparse.Namespace) -> None:
     results_dir = root_dir / "results"
     results_dir.mkdir(exist_ok=True)
 
-    print("Loading FineWiki dataset...")
+    # Add file handler for this run
+    log_path = results_dir / f"finewiki_{args.mode}_{args.num_articles}articles.log"
+    file_handler = logging.FileHandler(log_path, mode="w")
+    file_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", "%H:%M:%S"))
+    log.addHandler(file_handler)
+
+    log.info("Loading FineWiki dataset...")
     try:
         ds = load_dataset(
             "HuggingFaceFW/finewiki", name="en", split="train", streaming=True
         )
     except Exception as e:
-        print(f"Error loading FineWiki dataset: {e}", file=sys.stderr)
+        log.error(f"Error loading FineWiki dataset: {e}")
         return
 
     # Find articles with sufficient length
     articles = []
     min_words = args.context_words + args.continuation_words + 100
-    print(f"Finding {args.num_articles} articles with {min_words}+ words...")
+    log.info(f"Finding {args.num_articles} articles with {min_words}+ words...")
 
     for item in ds:
         text = item["text"]
         words = text.split()
         if len(words) >= min_words:
             articles.append({"title": item.get("title", "Untitled"), "text": text})
-            print(f"  Found: {item.get('title', 'Untitled')[:50]}...")
+            log.info(f"  Found: {item.get('title', 'Untitled')[:50]}...")
         if len(articles) >= args.num_articles:
             break
 
@@ -535,9 +557,9 @@ def cmd_finewiki(args: argparse.Namespace) -> None:
         "total": 0,
     }
 
-    print(f"\n{'=' * 70}")
-    print(f"FINEWIKI EXPERIMENT: Mode={args.mode}, Articles={args.num_articles}")
-    print("=" * 70)
+    log.info(f"\n{'=' * 70}")
+    log.info(f"FINEWIKI EXPERIMENT: Mode={args.mode}, Articles={args.num_articles}")
+    log.info("=" * 70)
 
     for i, article in enumerate(articles):
         words = article["text"].split()
@@ -546,7 +568,7 @@ def cmd_finewiki(args: argparse.Namespace) -> None:
             words[args.context_words : args.context_words + args.continuation_words]
         )
 
-        print(f"\n{'─' * 70}\nArticle {i + 1}: {article['title'][:50]}...\n{'─' * 70}")
+        log.info(f"\n{'─' * 70}\nArticle {i + 1}: {article['title'][:50]}...\n{'─' * 70}")
 
         img_path = data_dir / f"article_{i}.png"
         if not img_path.exists():
@@ -582,7 +604,7 @@ def cmd_finewiki(args: argparse.Namespace) -> None:
             else 0
         )
 
-        print(
+        log.info(
             f"  Text overlap: {text_overlap:.2f}, Vision overlap: {vision_overlap:.2f}"
         )
 
@@ -624,10 +646,13 @@ def cmd_finewiki(args: argparse.Namespace) -> None:
         with open(output_path, "w") as f:
             json.dump(results, f, indent=2)
 
-        print(
+        log.info(
             f"\n{'=' * 70}\nRESULTS: Text={text_avg:.3f}, Vision={vision_avg:.3f}, Compression={compression:.1f}x"
         )
-        print(f"Saved to: {output_path}")
+        log.info(f"Saved to: {output_path}")
+        log.info(f"Log saved to: {log_path}")
+
+    log.removeHandler(file_handler)
 
 
 def main() -> None:
