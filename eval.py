@@ -22,7 +22,6 @@ import argparse
 import hashlib
 import json
 import os
-import platform
 import sys
 from pathlib import Path
 
@@ -67,46 +66,13 @@ MODE_SETTINGS: dict[str, ModeSettings] = {
 _model: AutoModel | None = None
 _tokenizer: AutoTokenizer | None = None
 
-# Fallback monospace font paths per platform (if fc-match unavailable)
-_FALLBACK_MONO_FONTS: dict[str, str] = {
-    "Linux": "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-    "Darwin": "/System/Library/Fonts/Menlo.ttc",
-    "Windows": "C:/Windows/Fonts/consola.ttf",
-}
-
-
-def _find_monospace_font() -> str | None:
-    """Find the system's default monospace font path."""
-    # On Linux, use fontconfig's fc-match to find the default monospace font
-    if platform.system() == "Linux":
-        import subprocess
-
-        try:
-            result = subprocess.run(
-                ["fc-match", "monospace", "-f", "%{file}"],
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                return result.stdout.strip()
-        except FileNotFoundError:
-            pass
-
-    # Fall back to hardcoded paths for each platform
-    return _FALLBACK_MONO_FONTS.get(platform.system())
-
 
 def get_font(size: int = 14) -> FreeTypeFont:
-    """Load the system's default monospace font, or fall back to PIL default."""
-    font_path = _find_monospace_font()
-    if font_path:
-        try:
-            font = ImageFont.truetype(font_path, size)
-            return font
-        except (OSError, IOError):
-            pass
-    print("Warning: No monospace font found, using default font", file=sys.stderr)
-    return ImageFont.load_default()
+    """Load a monospace font using matplotlib's font manager."""
+    from matplotlib import font_manager
+
+    font_path = font_manager.findfont("monospace")
+    return ImageFont.truetype(font_path, size)
 
 
 # ============================================================================
