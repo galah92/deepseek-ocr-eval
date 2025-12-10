@@ -102,6 +102,38 @@ uv run python eval.py omnidocbench --mode base --num-articles 10
 
 *Note: This will automatically download the necessary annotations and images from Hugging Face.*
 
+## Future Research Directions: Beyond "Bad Autoencoding"
+
+While recent critiques (Lee et al., 2024) argue that optical compression is inefficient for pure text reconstruction, we propose that **modality switching acts as a superior feature extraction mechanism** for specific cognitive tasks. This project aims to evolve into a platform for proving that **Text-to-Image Encoding + Multimodality is Beneficial**.
+
+### The "Augmented Optical Context" Hypothesis
+
+We hypothesize that encoding text as an image can capture **meta-features** and **global patterns** that autoregressive text tokenizers miss or struggle to prioritize.
+
+**Why Visual Context Might Be Better:**
+1.  **Visual Gestalt:** Vision encoders process data spatially and hierarchically, potentially recognizing genre, density, and structure (e.g., "this looks like a contract") faster than linear text processing.
+2.  **Spatial Indexing:** Visual tokens map to 2D patches, potentially preserving "needle in haystack" location information better than semantic vector pooling.
+3.  **Robustness:** Vision is less brittle to character-level noise (typos, encoding errors) than text tokenizers.
+4.  **Rich Injection:** We can inject "metadata" into the visual channel—using fonts, colors, or highlighting during rendering—to guide the model's attention in ways impossible with standard text tokens.
+
+### Proposed Experiments
+
+To validate this, we plan to extend this suite with the following flows:
+
+#### 1. The Robustness Boundary (Noise Injection)
+*   **Goal:** Define the threshold where input noise makes Optical Compression superior to Text Compression.
+*   **Method:** Corrupt input text (typos, leetspeak, missing chars) -> Render -> Infer. Compare degradation curves against a text-only baseline.
+
+#### 2. Structured Semantics (Tables & Code)
+*   **Goal:** Prove that 2D spatial relationships are preserved better visually.
+*   **Method:** Evaluate on `TableBench` or complex Python code retrieval tasks. Ask structural questions ("What is in row 3, col 2?") rather than semantic ones.
+
+#### 3. Augmented Rendering (Meta-Feature Injection)
+*   **Goal:** Demonstrate that the visual channel can carry additional signal.
+*   **Method:** Render text with semantic coloring (e.g., verbs in red, entities in bold) or layout adjustments. Test if this "Rich Visual Context" improves downstream task performance (QA, summarization) compared to plain text.
+
+---
+
 ## Evaluation Methodology
 
 ### Compression Ratio
