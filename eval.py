@@ -1,12 +1,11 @@
 """Evaluate DeepSeek-OCR compression ratio and accuracy on document images."""
 
-from __future__ import annotations
-
 import argparse
 import hashlib
 import json
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from matplotlib import font_manager
@@ -23,16 +22,14 @@ PROMPT_TOKEN_OVERHEAD = 100
 CONTINUATION_TOKEN_OVERHEAD = 50
 
 
+@dataclass(frozen=True)
 class ModeSettings:
     """Settings for a resolution mode."""
 
-    def __init__(
-        self, base_size: int, image_size: int, crop_mode: bool, tokens: int | None
-    ):
-        self.base_size = base_size
-        self.image_size = image_size
-        self.crop_mode = crop_mode
-        self.tokens = tokens  # None for dynamic modes
+    base_size: int
+    image_size: int
+    crop_mode: bool
+    tokens: int | None  # None for dynamic modes
 
 
 MODE_SETTINGS: dict[str, ModeSettings] = {
