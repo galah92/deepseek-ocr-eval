@@ -5,28 +5,191 @@ Evaluates the DeepSeek-OCR model's ability to compress document images into
 vision tokens while maintaining OCR accuracy.
 
 Usage:
-    uv run python eval.py --image document.png --mode small
-    uv run python eval.py --image document.png --ground-truth gt.txt --mode small
-    uv run python eval.py --image document.png --dry-run
+    # OCR evaluation
+    uv run python eval.py ocr --image document.png --mode small
+    uv run python eval.py ocr --image document.png --ground-truth gt.txt
+
+    # QuALITY long-document QA experiment
+    uv run python eval.py quality --mode base --num-articles 10
+
+    # FineWiki language modeling experiment
+    uv run python eval.py finewiki --mode base --num-articles 20
 """
 
 import argparse
+import hashlib
+import json
 import os
+import platform
+import sys
+from pathlib import Path
+
+from PIL import Image, ImageDraw, ImageFont
+
+# Unbuffered output
+sys.stdout.reconfigure(line_buffering=True)
+
+# ============================================================================
+# Configuration
+# ============================================================================
+
+MODE_SETTINGS = {
+    "tiny": {"base_size": 512, "image_size": 512, "crop_mode": False, "tokens": 64},
+    "small": {"base_size": 640, "image_size": 640, "crop_mode": False, "tokens": 100},
+    "base": {"base_size": 1024, "image_size": 1024, "crop_mode": False, "tokens": 256},
+    "large": {"base_size": 1280, "image_size": 1280, "crop_mode": False, "tokens": 400},
+    "gundam": {
+        "base_size": 1024,
+        "image_size": 640,
+        "crop_mode": True,
+        "tokens": "dynamic",
+    },
+}
+
+# Global model cache
+_model = None
+_tokenizer = None
+
+
+# ============================================================================
+# Font Utilities
+# ============================================================================
+
+
+def _get_mono_font_paths():
+    """Get monospace font paths based on the current platform."""
+    system = platform.system()
+    if system == "Linux":
+        return [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeMono.ttf",
+        ]
+    elif system == "Darwin":  # macOS
+        return [
+            "/System/Library/Fonts/Menlo.ttc",
+            "/System/Library/Fonts/Monaco.ttf",
+            "/Library/Fonts/Courier New.ttf",
+        ]
+    elif system == "Windows":
+        return [
+            "C:/Windows/Fonts/consola.ttf",
+            "C:/Windows/Fonts/cour.ttf",
+            "C:/Windows/Fonts/lucon.ttf",
+        ]
+    return []
+
+
+FONT_PATHS = _get_mono_font_paths()
+
+
+def get_font(size: int = 14):
+    """Load a monospace font with fallback to default."""
+    for path in FONT_PATHS:
+        try:
+            return ImageFont.truetype(path, size)
+        except OSError:
+            continue
+        except IOError:
+            continue
+    print("Warning: No monospace font found, using default font", file=sys.stderr)
+    return ImageFont.load_default()
+
+
+# ============================================================================
+# Model Loading
+# ============================================================================
+
+
+def load_model():
+    """Load the DeepSeek-OCR model (cached after first load)."""
+    global _model, _tokenizer
+    if _model is not None:
+        return _model, _tokenizer
+
+    import torch
+    from transformers import AutoModel, AutoTokenizer
+
+    model_name = "deepseek-ai/DeepSeek-OCR"
+    print(f"Loading model from {model_name}...")
+
+    _tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+    _model = AutoModel.from_pretrained(
+        model_name,
+        attn_implementation="eager",
+        trust_remote_code=True,
+        use_safetensors=True,
+        torch_dtype=torch.bfloat16,
+    )
+    _model = _model.eval().cuda()
+    return _model, _tokenizer
+
+
+# ============================================================================
+# Image Rendering
+# ============================================================================
+
+
+def render_text_to_image(
+    text: str,
+    output_path: str,
+    font_size: int = 12,
+    max_width: int = 1200,
+    padding: int = 30,
+    line_spacing: int = 4,
+    bg_color: str = "#1e1e1e",
+    fg_color: str = "#d4d4d4",
+) -> tuple:
+    """Render text to image (dark mode for optimal OCR)."""
+    font = get_font(font_size)
+
+    lines = []
+    for paragraph in text.split("\n"):
+        if not paragraph.strip():
+            lines.append("")
+            continue
+        words = paragraph.split()
+        current_line = []
+        for word in words:
+            test_line = " ".join(current_line + [word])
+            bbox = font.getbbox(test_line)
+            if bbox[2] > max_width - 2 * padding:
+                if current_line:
+                    lines.append(" ".join(current_line))
+                current_line = [word]
+            else:
+                current_line.append(word)
+        if current_line:
+            lines.append(" ".join(current_line))
+
+    line_height = font_size + line_spacing
+    img_height = len(lines) * line_height + 2 * padding
+    img_width = max_width
+
+    img = Image.new("RGB", (img_width, img_height), color=bg_color)
+    draw = ImageDraw.Draw(img)
+
+    y = padding
+    for line in lines:
+        draw.text((padding, y), line, font=font, fill=fg_color)
+        y += line_height
+
+    img.save(output_path)
+    return img_width, img_height, len(lines)
+
+
+# ============================================================================
+# Token Calculation
+# ============================================================================
 
 
 def calculate_valid_vision_tokens(
     width: int, height: int, base_size: int, image_size: int, crop_mode: bool
 ) -> int:
-    """
-    Calculate valid vision tokens based on image dimensions and mode.
-
-    Padding reduces valid tokens - this formula accounts for aspect ratio.
-    From the paper: N_valid = N_actual * [1 - ((max(w,h) - min(w,h)) / max(w,h))]
-    """
+    """Calculate valid vision tokens based on image dimensions and mode."""
     ratio = 1 - ((max(width, height) - min(width, height)) / max(width, height))
 
     if crop_mode:
-        # Global view tokens
         if base_size == 1024:
             valid_tokens = int(256 * ratio)
         elif base_size == 1280:
@@ -34,7 +197,6 @@ def calculate_valid_vision_tokens(
         else:
             valid_tokens = 0
 
-        # Local view tokens (if image needs cropping)
         if width > 640 or height > 640:
             num_crops = calculate_num_crops(width, height, image_size)
             if image_size == 640:
@@ -42,13 +204,12 @@ def calculate_valid_vision_tokens(
             elif image_size == 1024:
                 valid_tokens += num_crops * 256
     else:
-        # Native resolution mode (no cropping)
         if base_size == 1024:
             valid_tokens = int(256 * ratio)
         elif base_size == 1280:
             valid_tokens = int(400 * ratio)
         elif base_size == 640:
-            valid_tokens = 100  # No ratio adjustment for small sizes
+            valid_tokens = 100
         elif base_size == 512:
             valid_tokens = 64
         else:
@@ -66,7 +227,6 @@ def calculate_num_crops(
 ) -> int:
     """Calculate number of image crops for dynamic resolution mode."""
     aspect_ratio = width / height
-
     target_ratios = set(
         (i, j)
         for n in range(min_crops, max_crops + 1)
@@ -88,58 +248,20 @@ def calculate_num_crops(
     return best_ratio[0] * best_ratio[1]
 
 
-def get_mode_settings(mode: str) -> dict:
-    """
-    Get resolution settings for each mode.
+def tokenize_text(text: str, tokenizer=None) -> int:
+    """Count tokens in text using the model's tokenizer or approximation."""
+    if tokenizer:
+        return len(tokenizer.encode(text, add_special_tokens=False))
+    return int(len(text.split()) * 1.3)
 
-    From the paper (Table 1):
-    - Tiny:  512x512,  64 tokens
-    - Small: 640x640,  100 tokens
-    - Base:  1024x1024, 256 tokens
-    - Large: 1280x1280, 400 tokens
-    - Gundam: dynamic (local + global views)
-    """
-    modes = {
-        "tiny": {"base_size": 512, "image_size": 512, "crop_mode": False, "tokens": 64},
-        "small": {
-            "base_size": 640,
-            "image_size": 640,
-            "crop_mode": False,
-            "tokens": 100,
-        },
-        "base": {
-            "base_size": 1024,
-            "image_size": 1024,
-            "crop_mode": False,
-            "tokens": 256,
-        },
-        "large": {
-            "base_size": 1280,
-            "image_size": 1280,
-            "crop_mode": False,
-            "tokens": 400,
-        },
-        "gundam": {
-            "base_size": 1024,
-            "image_size": 640,
-            "crop_mode": True,
-            "tokens": "dynamic",
-        },
-    }
-    return modes.get(mode, modes["small"])
+
+# ============================================================================
+# OCR Evaluation
+# ============================================================================
 
 
 def calculate_edit_distance(output: str, ground_truth: str) -> dict:
-    """
-    Calculate edit distance metrics using Levenshtein distance.
-
-    This is the same metric used in OmniDocBench evaluation.
-
-    Returns:
-        edit_distance: Raw number of character edits needed
-        normalized_ed: Edit distance / max(len(output), len(ground_truth))
-        precision: 1 - normalized_ed (higher is better)
-    """
+    """Calculate edit distance metrics using Levenshtein distance."""
     try:
         import Levenshtein
     except ImportError:
@@ -158,38 +280,10 @@ def calculate_edit_distance(output: str, ground_truth: str) -> dict:
     }
 
 
-def tokenize_text(text: str, tokenizer=None) -> int:
-    """Count tokens in text using the model's tokenizer or approximation."""
-    if tokenizer:
-        tokens = tokenizer.encode(text, add_special_tokens=False)
-        return len(tokens)
-    else:
-        # Approximation: ~1.3 tokens per word for subword tokenizers
-        return int(len(text.split()) * 1.3)
-
-
-def run_inference(image_path: str, mode: str, prompt: str = "<image>\nFree OCR."):
-    """
-    Run OCR inference using the DeepSeek-OCR model.
-
-    Returns: (output_text, vision_tokens, output_tokens)
-    """
-    from transformers import AutoModel, AutoTokenizer
-    import torch
-    from PIL import Image
-
-    model_name = "deepseek-ai/DeepSeek-OCR"
-    settings = get_mode_settings(mode)
-
-    print(f"Loading model from {model_name}...")
-    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-    model = AutoModel.from_pretrained(
-        model_name,
-        attn_implementation="eager",
-        trust_remote_code=True,
-        use_safetensors=True,
-    )
-    model = model.eval().cuda().to(torch.bfloat16)
+def run_ocr(image_path: str, mode: str, prompt: str = "<image>\nFree OCR."):
+    """Run OCR inference using the DeepSeek-OCR model."""
+    model, tokenizer = load_model()
+    settings = MODE_SETTINGS[mode]
 
     img = Image.open(image_path)
     width, height = img.size
@@ -220,101 +314,8 @@ def run_inference(image_path: str, mode: str, prompt: str = "<image>\nFree OCR."
     return output, vision_tokens, output_tokens
 
 
-def dry_run(image_path: str, mode: str, ground_truth: str = None):
-    """Show calculations without running the model (no GPU needed)."""
-    from PIL import Image
-
-    settings = get_mode_settings(mode)
-    img = Image.open(image_path)
-    width, height = img.size
-
-    vision_tokens = calculate_valid_vision_tokens(
-        width,
-        height,
-        settings["base_size"],
-        settings["image_size"],
-        settings["crop_mode"],
-    )
-
-    print("=" * 60)
-    print("DeepSeek-OCR Evaluation (Dry Run)")
-    print("=" * 60)
-    print("\n[INPUT]")
-    print(f"  Image: {image_path}")
-    print(f"  Dimensions: {width} x {height}")
-    print(f"  Mode: {mode}")
-    print(
-        f"  Settings: base_size={settings['base_size']}, crop_mode={settings['crop_mode']}"
-    )
-    print("\n[VISION TOKENS]")
-    print(f"  Valid vision tokens: {vision_tokens}")
-
-    if ground_truth:
-        gt_tokens = tokenize_text(ground_truth)
-        compression_ratio = gt_tokens / vision_tokens if vision_tokens > 0 else 0
-
-        print("\n[GROUND TRUTH]")
-        print(f"  Text length: {len(ground_truth)} characters")
-        print(f"  Approx tokens: {gt_tokens}")
-        print("\n[COMPRESSION]")
-        print(
-            f"  Compression ratio: {gt_tokens} / {vision_tokens} = {compression_ratio:.2f}x"
-        )
-
-        if compression_ratio < 10:
-            expected = "~97% (near lossless)"
-        elif compression_ratio < 12:
-            expected = "~90%"
-        elif compression_ratio < 15:
-            expected = "~80%"
-        else:
-            expected = "~60% or lower"
-        print(f"  Expected precision (from paper): {expected}")
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Evaluate DeepSeek-OCR compression ratio and accuracy",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Dry run (no GPU needed)
-  uv run python eval.py --image doc.png --dry-run
-
-  # Full inference
-  uv run python eval.py --image doc.png --mode small
-
-  # With ground truth for accuracy calculation
-  uv run python eval.py --image doc.png --ground-truth gt.txt --mode base
-        """,
-    )
-    parser.add_argument("--image", type=str, required=True, help="Path to input image")
-    parser.add_argument(
-        "--mode",
-        type=str,
-        default="small",
-        choices=["tiny", "small", "base", "large", "gundam"],
-        help="Resolution mode (default: small)",
-    )
-    parser.add_argument(
-        "--ground-truth",
-        type=str,
-        default=None,
-        help="Ground truth text or path to text file",
-    )
-    parser.add_argument(
-        "--dry-run", action="store_true", help="Show calculations without running model"
-    )
-    parser.add_argument(
-        "--prompt", type=str, default="<image>\nFree OCR.", help="Prompt for OCR"
-    )
-    parser.add_argument(
-        "--show-output", action="store_true", help="Show OCR output text"
-    )
-
-    args = parser.parse_args()
-
-    # Load ground truth
+def cmd_ocr(args):
+    """OCR evaluation command."""
     ground_truth = None
     if args.ground_truth:
         if os.path.isfile(args.ground_truth):
@@ -324,36 +325,441 @@ Examples:
             ground_truth = args.ground_truth
 
     if args.dry_run:
-        dry_run(args.image, args.mode, ground_truth)
+        settings = MODE_SETTINGS[args.mode]
+        img = Image.open(args.image)
+        width, height = img.size
+        vision_tokens = calculate_valid_vision_tokens(
+            width,
+            height,
+            settings["base_size"],
+            settings["image_size"],
+            settings["crop_mode"],
+        )
+
+        print("=" * 60)
+        print("DeepSeek-OCR Evaluation (Dry Run)")
+        print("=" * 60)
+        print(f"\n[INPUT]\n  Image: {args.image}\n  Dimensions: {width} x {height}")
+        print(f"  Mode: {args.mode}")
+        print(f"\n[VISION TOKENS]\n  Valid vision tokens: {vision_tokens}")
+
+        if ground_truth:
+            gt_tokens = tokenize_text(ground_truth)
+            compression = gt_tokens / vision_tokens if vision_tokens > 0 else 0
+            print(f"\n[GROUND TRUTH]\n  Text length: {len(ground_truth)} characters")
+            print(f"  Approx tokens: {gt_tokens}")
+            print(f"\n[COMPRESSION]\n  Compression ratio: {compression:.2f}x")
         return
 
-    # Full inference
     print("=" * 60)
     print("DeepSeek-OCR Evaluation")
     print("=" * 60)
 
-    output, vision_tokens, output_tokens = run_inference(
-        args.image, args.mode, args.prompt
-    )
+    output, vision_tokens, output_tokens = run_ocr(args.image, args.mode, args.prompt)
+    compression = output_tokens / vision_tokens if vision_tokens > 0 else 0
 
-    compression_ratio = output_tokens / vision_tokens if vision_tokens > 0 else 0
-
-    print("\n[RESULTS]")
-    print(f"  Vision tokens: {vision_tokens}")
-    print(f"  Output tokens: {output_tokens}")
-    print(f"  Compression ratio: {compression_ratio:.2f}x")
+    print(f"\n[RESULTS]\n  Vision tokens: {vision_tokens}")
+    print(f"  Output tokens: {output_tokens}\n  Compression ratio: {compression:.2f}x")
 
     if ground_truth:
         metrics = calculate_edit_distance(output, ground_truth)
-        print("\n[ACCURACY]")
-        print(f"  Edit distance: {metrics['edit_distance']} characters")
-        print(f"  Normalized ED: {metrics['normalized_ed']}")
-        print(f"  Precision: {metrics['precision']}%")
+        print(f"\n[ACCURACY]\n  Edit distance: {metrics['edit_distance']} characters")
+        print(
+            f"  Normalized ED: {metrics['normalized_ed']}\n  Precision: {metrics['precision']}%"
+        )
 
     if args.show_output:
-        print("\n[OCR OUTPUT]")
-        print("-" * 60)
+        print(f"\n[OCR OUTPUT]\n{'-' * 60}")
         print(output[:2000] + ("..." if len(output) > 2000 else ""))
+
+
+# ============================================================================
+# QuALITY Experiment
+# ============================================================================
+
+
+def cmd_quality(args):
+    """QuALITY long-document QA experiment."""
+    from datasets import load_dataset
+
+    root_dir = Path(__file__).parent
+    data_dir = root_dir / ".cache" / "quality"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    results_dir = root_dir / "results"
+    results_dir.mkdir(exist_ok=True)
+
+    print("Loading QuALITY dataset...")
+    try:
+        ds = load_dataset("emozilla/quality", split="validation")
+    except Exception as e:
+        print(f"Error loading QuALITY dataset: {e}", file=sys.stderr)
+        return
+
+    # Group questions by article
+    articles = {}
+    for item in ds:
+        article_hash = hashlib.md5(item["article"][:100].encode()).hexdigest()[:8]
+        if article_hash not in articles:
+            articles[article_hash] = {"article": item["article"], "questions": []}
+        articles[article_hash]["questions"].append(
+            {
+                "question": item["question"],
+                "options": item["options"],
+                "answer": item["answer"],
+            }
+        )
+
+    print(f"Found {len(articles)} unique articles")
+    article_items = list(articles.items())[: args.num_articles]
+
+    model, tokenizer = load_model()
+    settings = MODE_SETTINGS[args.mode]
+
+    results = {"mode": args.mode, "articles": {}, "summary": {}}
+    stats = {
+        "text_correct": 0,
+        "vision_correct": 0,
+        "text_tokens": 0,
+        "vision_tokens": 0,
+        "total": 0,
+    }
+
+    print(f"\n{'=' * 70}")
+    print(f"QUALITY EXPERIMENT: Mode={args.mode}, Articles={args.num_articles}")
+    print("=" * 70)
+
+    for article_hash, article_data in article_items:
+        article = article_data["article"]
+        questions = article_data["questions"][: args.questions_per_article]
+
+        print(
+            f"\n{'─' * 70}\nArticle: {article_hash} ({len(article.split())} words)\n{'─' * 70}"
+        )
+
+        img_path = data_dir / f"{article_hash}.png"
+        if not img_path.exists():
+            render_text_to_image(article, str(img_path))
+
+        article_results = {"questions": [], "text_correct": 0, "vision_correct": 0}
+
+        for qa in questions:
+            question, options, expected = qa["question"], qa["options"], qa["answer"]
+            options_text = "\n".join(f"{i}. {opt}" for i, opt in enumerate(options))
+
+            # Text condition
+            text_prompt = f"<image>\n{article}\n\nQuestion: {question}\n\nOptions:\n{options_text}\n\nAnswer with just the option number (0, 1, 2, or 3):"
+            blank_path = "/tmp/blank_32x32.png"
+            Image.new("RGB", (32, 32), color="white").save(blank_path)
+            text_output = model.infer(
+                tokenizer,
+                prompt=text_prompt,
+                image_file=blank_path,
+                output_path="/tmp/out",
+                base_size=512,
+                image_size=512,
+                crop_mode=False,
+                save_results=False,
+                test_compress=True,
+                eval_mode=True,
+            )
+            text_tokens = len(tokenizer.encode(article, add_special_tokens=False)) + 100
+
+            # Vision condition
+            vision_prompt = f"<image>\n\nQuestion: {question}\n\nOptions:\n{options_text}\n\nAnswer with just the option number (0, 1, 2, or 3):"
+            vision_output = model.infer(
+                tokenizer,
+                prompt=vision_prompt,
+                image_file=str(img_path),
+                output_path="/tmp/out",
+                base_size=settings["base_size"],
+                image_size=settings["image_size"],
+                crop_mode=False,
+                save_results=False,
+                test_compress=True,
+                eval_mode=True,
+            )
+            vision_tokens = settings["tokens"] + 100
+
+            # Parse answers
+            text_pred = next((int(c) for c in text_output.strip() if c in "0123"), -1)
+            vision_pred = next(
+                (int(c) for c in vision_output.strip() if c in "0123"), -1
+            )
+
+            text_correct = text_pred == expected
+            vision_correct = vision_pred == expected
+
+            print(f"  Q: {question[:60]}...")
+            print(
+                f"    Text: {text_pred} {'✓' if text_correct else '✗'}, Vision: {vision_pred} {'✓' if vision_correct else '✗'}"
+            )
+
+            if text_correct:
+                article_results["text_correct"] += 1
+                stats["text_correct"] += 1
+            if vision_correct:
+                article_results["vision_correct"] += 1
+                stats["vision_correct"] += 1
+
+            stats["text_tokens"] += text_tokens
+            stats["vision_tokens"] += vision_tokens
+            stats["total"] += 1
+
+        results["articles"][article_hash] = article_results
+
+    # Summary
+    n = stats["total"]
+    text_acc = round(stats["text_correct"] / n * 100, 1) if n > 0 else 0
+    vision_acc = round(stats["vision_correct"] / n * 100, 1) if n > 0 else 0
+    compression = (
+        stats["text_tokens"] / stats["vision_tokens"]
+        if stats["vision_tokens"] > 0
+        else 0
+    )
+
+    results["summary"] = {
+        "total_questions": n,
+        "text_accuracy": text_acc,
+        "vision_accuracy": vision_acc,
+        "compression_ratio": round(compression, 2),
+    }
+
+    output_path = results_dir / f"quality_{args.mode}_{args.num_articles}articles.json"
+    with open(output_path, "w") as f:
+        json.dump(results, f, indent=2)
+
+    print(
+        f"\n{'=' * 70}\nRESULTS: Text={text_acc}%, Vision={vision_acc}%, Compression={compression:.1f}x"
+    )
+    print(f"Saved to: {output_path}")
+
+
+# ============================================================================
+# FineWiki Experiment
+# ============================================================================
+
+
+def cmd_finewiki(args):
+    """FineWiki language modeling experiment."""
+    from datasets import load_dataset
+
+    root_dir = Path(__file__).parent
+    data_dir = root_dir / ".cache" / "finewiki"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    results_dir = root_dir / "results"
+    results_dir.mkdir(exist_ok=True)
+
+    print("Loading FineWiki dataset...")
+    try:
+        ds = load_dataset(
+            "HuggingFaceFW/finewiki", name="en", split="train", streaming=True
+        )
+    except Exception as e:
+        print(f"Error loading FineWiki dataset: {e}", file=sys.stderr)
+        return
+
+    # Find articles with sufficient length
+    articles = []
+    min_words = args.context_words + args.continuation_words + 100
+    print(f"Finding {args.num_articles} articles with {min_words}+ words...")
+
+    for item in ds:
+        text = item["text"]
+        words = text.split()
+        if len(words) >= min_words:
+            articles.append({"title": item.get("title", "Untitled"), "text": text})
+            print(f"  Found: {item.get('title', 'Untitled')[:50]}...")
+        if len(articles) >= args.num_articles:
+            break
+
+    model, tokenizer = load_model()
+    settings = MODE_SETTINGS[args.mode]
+
+    results = {"mode": args.mode, "articles": [], "summary": {}}
+    stats = {
+        "text_overlap": 0,
+        "vision_overlap": 0,
+        "text_tokens": 0,
+        "vision_tokens": 0,
+        "total": 0,
+    }
+
+    print(f"\n{'=' * 70}")
+    print(f"FINEWIKI EXPERIMENT: Mode={args.mode}, Articles={args.num_articles}")
+    print("=" * 70)
+
+    for i, article in enumerate(articles):
+        words = article["text"].split()
+        context = " ".join(words[: args.context_words])
+        continuation = " ".join(
+            words[args.context_words : args.context_words + args.continuation_words]
+        )
+
+        print(f"\n{'─' * 70}\nArticle {i + 1}: {article['title'][:50]}...\n{'─' * 70}")
+
+        img_path = data_dir / f"article_{i}.png"
+        if not img_path.exists():
+            render_text_to_image(context, str(img_path))
+
+        # Text condition
+        text_prompt = (
+            f"<image>\n{context}\n\nContinue this text with the next sentence:"
+        )
+        blank_path = "/tmp/blank_32x32.png"
+        Image.new("RGB", (32, 32), color="white").save(blank_path)
+        text_output = model.infer(
+            tokenizer,
+            prompt=text_prompt,
+            image_file=blank_path,
+            output_path="/tmp/out",
+            base_size=512,
+            image_size=512,
+            crop_mode=False,
+            save_results=False,
+            test_compress=True,
+            eval_mode=True,
+        )
+        text_tokens = len(tokenizer.encode(context, add_special_tokens=False)) + 50
+
+        # Vision condition
+        vision_prompt = "<image>\n\nContinue this text with the next sentence:"
+        vision_output = model.infer(
+            tokenizer,
+            prompt=vision_prompt,
+            image_file=str(img_path),
+            output_path="/tmp/out",
+            base_size=settings["base_size"],
+            image_size=settings["image_size"],
+            crop_mode=False,
+            save_results=False,
+            test_compress=True,
+            eval_mode=True,
+        )
+        vision_tokens = settings["tokens"] + 50
+
+        # Compute overlap scores
+        target_words = set(continuation.lower().split())
+        text_overlap = (
+            len(set(text_output.lower().split()) & target_words) / len(target_words)
+            if target_words
+            else 0
+        )
+        vision_overlap = (
+            len(set(vision_output.lower().split()) & target_words) / len(target_words)
+            if target_words
+            else 0
+        )
+
+        print(
+            f"  Text overlap: {text_overlap:.2f}, Vision overlap: {vision_overlap:.2f}"
+        )
+
+        stats["text_overlap"] += text_overlap
+        stats["vision_overlap"] += vision_overlap
+        stats["text_tokens"] += text_tokens
+        stats["vision_tokens"] += vision_tokens
+        stats["total"] += 1
+
+        results["articles"].append(
+            {
+                "title": article["title"],
+                "text_overlap": round(text_overlap, 3),
+                "vision_overlap": round(vision_overlap, 3),
+            }
+        )
+
+    # Summary
+    n = stats["total"]
+    if n > 0:
+        text_avg = stats["text_overlap"] / n
+        vision_avg = stats["vision_overlap"] / n
+        compression = (
+            stats["text_tokens"] / stats["vision_tokens"]
+            if stats["vision_tokens"] > 0
+            else 0
+        )
+
+        results["summary"] = {
+            "total_articles": n,
+            "text_avg_overlap": round(text_avg, 3),
+            "vision_avg_overlap": round(vision_avg, 3),
+            "compression_ratio": round(compression, 2),
+        }
+
+        output_path = (
+            results_dir / f"finewiki_{args.mode}_{args.num_articles}articles.json"
+        )
+        with open(output_path, "w") as f:
+            json.dump(results, f, indent=2)
+
+        print(
+            f"\n{'=' * 70}\nRESULTS: Text={text_avg:.3f}, Vision={vision_avg:.3f}, Compression={compression:.1f}x"
+        )
+        print(f"Saved to: {output_path}")
+
+
+# ============================================================================
+# Main
+# ============================================================================
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="DeepSeek-OCR evaluation and experiments",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # OCR command
+    ocr_parser = subparsers.add_parser("ocr", help="Run OCR evaluation on an image")
+    ocr_parser.add_argument(
+        "--image", type=str, required=True, help="Path to input image"
+    )
+    ocr_parser.add_argument(
+        "--mode", type=str, default="small", choices=list(MODE_SETTINGS.keys())
+    )
+    ocr_parser.add_argument(
+        "--ground-truth", type=str, help="Ground truth text or file path"
+    )
+    ocr_parser.add_argument(
+        "--dry-run", action="store_true", help="Show calculations only"
+    )
+    ocr_parser.add_argument("--prompt", type=str, default="<image>\nFree OCR.")
+    ocr_parser.add_argument(
+        "--show-output", action="store_true", help="Show OCR output"
+    )
+
+    # QuALITY command
+    quality_parser = subparsers.add_parser(
+        "quality", help="Run QuALITY long-document QA experiment"
+    )
+    quality_parser.add_argument(
+        "--mode", type=str, default="base", choices=["tiny", "small", "base", "large"]
+    )
+    quality_parser.add_argument("--num-articles", type=int, default=10)
+    quality_parser.add_argument("--questions-per-article", type=int, default=5)
+
+    # FineWiki command
+    finewiki_parser = subparsers.add_parser(
+        "finewiki", help="Run FineWiki language modeling experiment"
+    )
+    finewiki_parser.add_argument(
+        "--mode", type=str, default="base", choices=["tiny", "small", "base", "large"]
+    )
+    finewiki_parser.add_argument("--num-articles", type=int, default=20)
+    finewiki_parser.add_argument("--context-words", type=int, default=500)
+    finewiki_parser.add_argument("--continuation-words", type=int, default=50)
+
+    args = parser.parse_args()
+
+    if args.command == "ocr":
+        cmd_ocr(args)
+    elif args.command == "quality":
+        cmd_quality(args)
+    elif args.command == "finewiki":
+        cmd_finewiki(args)
+    else:
+        parser.print_help()
 
 
 if __name__ == "__main__":
