@@ -16,6 +16,8 @@ Usage:
     uv run python eval.py finewiki --mode base --num-articles 20
 """
 
+from __future__ import annotations
+
 import argparse
 import hashlib
 import json
@@ -25,6 +27,8 @@ import sys
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
+from PIL.ImageFont import FreeTypeFont
+from transformers import AutoModel, AutoTokenizer
 
 # Unbuffered output
 sys.stdout.reconfigure(line_buffering=True)
@@ -33,22 +37,38 @@ sys.stdout.reconfigure(line_buffering=True)
 # Configuration
 # ============================================================================
 
-MODE_SETTINGS = {
-    "tiny": {"base_size": 512, "image_size": 512, "crop_mode": False, "tokens": 64},
-    "small": {"base_size": 640, "image_size": 640, "crop_mode": False, "tokens": 100},
-    "base": {"base_size": 1024, "image_size": 1024, "crop_mode": False, "tokens": 256},
-    "large": {"base_size": 1280, "image_size": 1280, "crop_mode": False, "tokens": 400},
-    "gundam": {
-        "base_size": 1024,
-        "image_size": 640,
-        "crop_mode": True,
-        "tokens": "dynamic",
-    },
+# Temporary paths for experiments
+TMP_OUTPUT_PATH = "/tmp/deepseek_ocr_output"
+TMP_BLANK_IMAGE = "/tmp/blank_32x32.png"
+
+# Token overhead for prompts in experiments
+PROMPT_TOKEN_OVERHEAD = 100
+CONTINUATION_TOKEN_OVERHEAD = 50
+
+
+class ModeSettings:
+    """Settings for a resolution mode."""
+
+    def __init__(
+        self, base_size: int, image_size: int, crop_mode: bool, tokens: int | None
+    ):
+        self.base_size = base_size
+        self.image_size = image_size
+        self.crop_mode = crop_mode
+        self.tokens = tokens  # None for dynamic modes
+
+
+MODE_SETTINGS: dict[str, ModeSettings] = {
+    "tiny": ModeSettings(512, 512, False, 64),
+    "small": ModeSettings(640, 640, False, 100),
+    "base": ModeSettings(1024, 1024, False, 256),
+    "large": ModeSettings(1280, 1280, False, 400),
+    "gundam": ModeSettings(1024, 640, True, None),
 }
 
 # Global model cache
-_model = None
-_tokenizer = None
+_model: AutoModel | None = None
+_tokenizer: AutoTokenizer | None = None
 
 
 # ============================================================================
@@ -56,7 +76,7 @@ _tokenizer = None
 # ============================================================================
 
 
-def _get_mono_font_paths():
+def _get_mono_font_paths() -> list[str]:
     """Get monospace font paths based on the current platform."""
     system = platform.system()
     if system == "Linux":
@@ -83,14 +103,12 @@ def _get_mono_font_paths():
 FONT_PATHS = _get_mono_font_paths()
 
 
-def get_font(size: int = 14):
+def get_font(size: int = 14) -> FreeTypeFont:
     """Load a monospace font with fallback to default."""
     for path in FONT_PATHS:
         try:
             return ImageFont.truetype(path, size)
-        except OSError:
-            continue
-        except IOError:
+        except (OSError, IOError):
             continue
     print("Warning: No monospace font found, using default font", file=sys.stderr)
     return ImageFont.load_default()
@@ -101,14 +119,13 @@ def get_font(size: int = 14):
 # ============================================================================
 
 
-def load_model():
+def load_model() -> tuple[AutoModel, AutoTokenizer]:
     """Load the DeepSeek-OCR model (cached after first load)."""
     global _model, _tokenizer
     if _model is not None:
         return _model, _tokenizer
 
     import torch
-    from transformers import AutoModel, AutoTokenizer
 
     model_name = "deepseek-ai/DeepSeek-OCR"
     print(f"Loading model from {model_name}...")
@@ -139,8 +156,12 @@ def render_text_to_image(
     line_spacing: int = 4,
     bg_color: str = "#1e1e1e",
     fg_color: str = "#d4d4d4",
-) -> tuple:
-    """Render text to image (dark mode for optimal OCR)."""
+) -> tuple[int, int, int]:
+    """Render text to image (dark mode for optimal OCR).
+
+    Returns:
+        Tuple of (image_width, image_height, num_lines).
+    """
     font = get_font(font_size)
 
     lines = []
@@ -184,9 +205,12 @@ def render_text_to_image(
 
 
 def calculate_valid_vision_tokens(
-    width: int, height: int, base_size: int, image_size: int, crop_mode: bool
+    width: int, height: int, settings: ModeSettings
 ) -> int:
-    """Calculate valid vision tokens based on image dimensions and mode."""
+    """Calculate valid vision tokens based on image dimensions and mode settings."""
+    base_size = settings.base_size
+    image_size = settings.image_size
+    crop_mode = settings.crop_mode
     ratio = 1 - ((max(width, height) - min(width, height)) / max(width, height))
 
     if crop_mode:
@@ -248,7 +272,7 @@ def calculate_num_crops(
     return best_ratio[0] * best_ratio[1]
 
 
-def tokenize_text(text: str, tokenizer=None) -> int:
+def tokenize_text(text: str, tokenizer: AutoTokenizer | None = None) -> int:
     """Count tokens in text using the model's tokenizer or approximation."""
     if tokenizer:
         return len(tokenizer.encode(text, add_special_tokens=False))
@@ -260,13 +284,13 @@ def tokenize_text(text: str, tokenizer=None) -> int:
 # ============================================================================
 
 
-def calculate_edit_distance(output: str, ground_truth: str) -> dict:
-    """Calculate edit distance metrics using Levenshtein distance."""
-    try:
-        import Levenshtein
-    except ImportError:
-        print("Error: python-levenshtein not installed. Run: uv add python-levenshtein")
-        return {"edit_distance": -1, "normalized_ed": -1, "precision": -1}
+def calculate_edit_distance(output: str, ground_truth: str) -> dict[str, int | float]:
+    """Calculate edit distance metrics using Levenshtein distance.
+
+    Returns:
+        Dict with edit_distance, normalized_ed, and precision (as percentage).
+    """
+    import Levenshtein
 
     edit_dist = Levenshtein.distance(output, ground_truth)
     max_len = max(len(output), len(ground_truth))
@@ -280,31 +304,31 @@ def calculate_edit_distance(output: str, ground_truth: str) -> dict:
     }
 
 
-def run_ocr(image_path: str, mode: str, prompt: str = "<image>\nFree OCR."):
-    """Run OCR inference using the DeepSeek-OCR model."""
+def run_ocr(
+    image_path: str, mode: str, prompt: str = "<image>\nFree OCR."
+) -> tuple[str, int, int]:
+    """Run OCR inference using the DeepSeek-OCR model.
+
+    Returns:
+        Tuple of (ocr_output, vision_tokens, output_tokens).
+    """
     model, tokenizer = load_model()
     settings = MODE_SETTINGS[mode]
 
     img = Image.open(image_path)
     width, height = img.size
 
-    vision_tokens = calculate_valid_vision_tokens(
-        width,
-        height,
-        settings["base_size"],
-        settings["image_size"],
-        settings["crop_mode"],
-    )
+    vision_tokens = calculate_valid_vision_tokens(width, height, settings)
 
     print(f"Running inference (mode={mode}, vision_tokens={vision_tokens})...")
     output = model.infer(
         tokenizer,
         prompt=prompt,
         image_file=image_path,
-        output_path="/tmp/deepseek_ocr_output",
-        base_size=settings["base_size"],
-        image_size=settings["image_size"],
-        crop_mode=settings["crop_mode"],
+        output_path=TMP_OUTPUT_PATH,
+        base_size=settings.base_size,
+        image_size=settings.image_size,
+        crop_mode=settings.crop_mode,
         save_results=False,
         test_compress=True,
         eval_mode=True,
@@ -314,8 +338,8 @@ def run_ocr(image_path: str, mode: str, prompt: str = "<image>\nFree OCR."):
     return output, vision_tokens, output_tokens
 
 
-def cmd_ocr(args):
-    """OCR evaluation command."""
+def cmd_ocr(args: argparse.Namespace) -> None:
+    """Run OCR evaluation on an image, optionally comparing to ground truth."""
     ground_truth = None
     if args.ground_truth:
         if os.path.isfile(args.ground_truth):
@@ -328,13 +352,7 @@ def cmd_ocr(args):
         settings = MODE_SETTINGS[args.mode]
         img = Image.open(args.image)
         width, height = img.size
-        vision_tokens = calculate_valid_vision_tokens(
-            width,
-            height,
-            settings["base_size"],
-            settings["image_size"],
-            settings["crop_mode"],
-        )
+        vision_tokens = calculate_valid_vision_tokens(width, height, settings)
 
         print("=" * 60)
         print("DeepSeek-OCR Evaluation (Dry Run)")
@@ -378,8 +396,57 @@ def cmd_ocr(args):
 # ============================================================================
 
 
-def cmd_quality(args):
-    """QuALITY long-document QA experiment."""
+def _ensure_blank_image() -> str:
+    """Ensure a blank image exists for text-only inference and return its path."""
+    if not os.path.exists(TMP_BLANK_IMAGE):
+        Image.new("RGB", (32, 32), color="white").save(TMP_BLANK_IMAGE)
+    return TMP_BLANK_IMAGE
+
+
+def _infer_with_text(
+    model: AutoModel,
+    tokenizer: AutoTokenizer,
+    prompt: str,
+) -> str:
+    """Run inference with text context (using blank image)."""
+    return model.infer(
+        tokenizer,
+        prompt=prompt,
+        image_file=_ensure_blank_image(),
+        output_path=TMP_OUTPUT_PATH,
+        base_size=512,
+        image_size=512,
+        crop_mode=False,
+        save_results=False,
+        test_compress=True,
+        eval_mode=True,
+    )
+
+
+def _infer_with_vision(
+    model: AutoModel,
+    tokenizer: AutoTokenizer,
+    prompt: str,
+    image_path: str,
+    settings: ModeSettings,
+) -> str:
+    """Run inference with image context."""
+    return model.infer(
+        tokenizer,
+        prompt=prompt,
+        image_file=image_path,
+        output_path=TMP_OUTPUT_PATH,
+        base_size=settings.base_size,
+        image_size=settings.image_size,
+        crop_mode=settings.crop_mode,
+        save_results=False,
+        test_compress=True,
+        eval_mode=True,
+    )
+
+
+def cmd_quality(args: argparse.Namespace) -> None:
+    """Run QuALITY long-document QA experiment comparing text vs vision accuracy."""
     from datasets import load_dataset
 
     root_dir = Path(__file__).parent
@@ -448,37 +515,18 @@ def cmd_quality(args):
 
             # Text condition
             text_prompt = f"<image>\n{article}\n\nQuestion: {question}\n\nOptions:\n{options_text}\n\nAnswer with just the option number (0, 1, 2, or 3):"
-            blank_path = "/tmp/blank_32x32.png"
-            Image.new("RGB", (32, 32), color="white").save(blank_path)
-            text_output = model.infer(
-                tokenizer,
-                prompt=text_prompt,
-                image_file=blank_path,
-                output_path="/tmp/out",
-                base_size=512,
-                image_size=512,
-                crop_mode=False,
-                save_results=False,
-                test_compress=True,
-                eval_mode=True,
+            text_output = _infer_with_text(model, tokenizer, text_prompt)
+            text_tokens = (
+                len(tokenizer.encode(article, add_special_tokens=False))
+                + PROMPT_TOKEN_OVERHEAD
             )
-            text_tokens = len(tokenizer.encode(article, add_special_tokens=False)) + 100
 
             # Vision condition
             vision_prompt = f"<image>\n\nQuestion: {question}\n\nOptions:\n{options_text}\n\nAnswer with just the option number (0, 1, 2, or 3):"
-            vision_output = model.infer(
-                tokenizer,
-                prompt=vision_prompt,
-                image_file=str(img_path),
-                output_path="/tmp/out",
-                base_size=settings["base_size"],
-                image_size=settings["image_size"],
-                crop_mode=False,
-                save_results=False,
-                test_compress=True,
-                eval_mode=True,
+            vision_output = _infer_with_vision(
+                model, tokenizer, vision_prompt, str(img_path), settings
             )
-            vision_tokens = settings["tokens"] + 100
+            vision_tokens = settings.tokens + PROMPT_TOKEN_OVERHEAD
 
             # Parse answers
             text_pred = next((int(c) for c in text_output.strip() if c in "0123"), -1)
@@ -539,8 +587,8 @@ def cmd_quality(args):
 # ============================================================================
 
 
-def cmd_finewiki(args):
-    """FineWiki language modeling experiment."""
+def cmd_finewiki(args: argparse.Namespace) -> None:
+    """Run FineWiki language modeling experiment comparing text vs vision continuation."""
     from datasets import load_dataset
 
     root_dir = Path(__file__).parent
@@ -605,37 +653,18 @@ def cmd_finewiki(args):
         text_prompt = (
             f"<image>\n{context}\n\nContinue this text with the next sentence:"
         )
-        blank_path = "/tmp/blank_32x32.png"
-        Image.new("RGB", (32, 32), color="white").save(blank_path)
-        text_output = model.infer(
-            tokenizer,
-            prompt=text_prompt,
-            image_file=blank_path,
-            output_path="/tmp/out",
-            base_size=512,
-            image_size=512,
-            crop_mode=False,
-            save_results=False,
-            test_compress=True,
-            eval_mode=True,
+        text_output = _infer_with_text(model, tokenizer, text_prompt)
+        text_tokens = (
+            len(tokenizer.encode(context, add_special_tokens=False))
+            + CONTINUATION_TOKEN_OVERHEAD
         )
-        text_tokens = len(tokenizer.encode(context, add_special_tokens=False)) + 50
 
         # Vision condition
         vision_prompt = "<image>\n\nContinue this text with the next sentence:"
-        vision_output = model.infer(
-            tokenizer,
-            prompt=vision_prompt,
-            image_file=str(img_path),
-            output_path="/tmp/out",
-            base_size=settings["base_size"],
-            image_size=settings["image_size"],
-            crop_mode=False,
-            save_results=False,
-            test_compress=True,
-            eval_mode=True,
+        vision_output = _infer_with_vision(
+            model, tokenizer, vision_prompt, str(img_path), settings
         )
-        vision_tokens = settings["tokens"] + 50
+        vision_tokens = settings.tokens + CONTINUATION_TOKEN_OVERHEAD
 
         # Compute overlap scores
         target_words = set(continuation.lower().split())
@@ -703,7 +732,7 @@ def cmd_finewiki(args):
 # ============================================================================
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="DeepSeek-OCR evaluation and experiments",
         formatter_class=argparse.RawDescriptionHelpFormatter,
