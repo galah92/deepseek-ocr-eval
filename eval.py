@@ -1,10 +1,9 @@
 """Evaluate DeepSeek-OCR compression ratio and accuracy on document images."""
 
 import argparse
+import logging
 import hashlib
 import json
-import logging
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,13 +16,16 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(message)s",
     datefmt="%H:%M:%S",
-    handlers=[logging.StreamHandler()],
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler("deepseek_ocr.log", mode="w"),
+    ],
 )
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 # Temporary paths for experiments
-TMP_OUTPUT_PATH = "/tmp/deepseek_ocr_output"
-TMP_BLANK_IMAGE = "/tmp/blank_32x32.png"
+TMP_OUTPUT_PATH = Path("/tmp/deepseek_ocr_output")
+TMP_BLANK_IMAGE = Path("/tmp/blank_32x32.png")
 
 # Token overhead for prompts in experiments
 PROMPT_TOKEN_OVERHEAD = 100
@@ -65,7 +67,7 @@ def load_model() -> tuple[AutoModel, AutoTokenizer]:
     import torch
 
     model_name = "deepseek-ai/DeepSeek-OCR"
-    log.info(f"Loading model from {model_name}...")
+    logger.info(f"Loading model from {model_name}...")
 
     _tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     _model = AutoModel.from_pretrained(
@@ -85,7 +87,7 @@ BG_COLOR = "#1e1e1e"
 FG_COLOR = "#d4d4d4"
 FONT = ImageFont.truetype(MONO_FONT_PATH, FONT_SIZE)
 
-log.info(
+logger.info(
     f"[Render config] font={FONT.getname()[0]}, size={FONT_SIZE}pt, "
     f"bg={BG_COLOR}, fg={FG_COLOR}, path={MONO_FONT_PATH}"
 )
@@ -98,7 +100,17 @@ def render_text_to_image(
     padding: int = 30,
     line_spacing: int = 4,
 ) -> None:
-    """Render text to image (dark mode for optimal OCR)."""
+    """Render text to an image with dark mode settings for optimal OCR.
+
+    The function handles line wrapping based on `max_width` and `padding`.
+
+    Args:
+        text: The input text to render.
+        output_path: The path where the generated image will be saved.
+        max_width: The maximum width of the output image.
+        padding: The padding around the text content within the image.
+        line_spacing: Additional spacing between lines of text.
+    """
 
     lines = []
     for paragraph in text.split("\n"):
@@ -138,36 +150,25 @@ def calculate_valid_vision_tokens(
     width: int, height: int, settings: ModeSettings
 ) -> int:
     """Calculate valid vision tokens based on image dimensions and mode settings."""
-    base_size = settings.base_size
-    image_size = settings.image_size
-    crop_mode = settings.crop_mode
-    ratio = 1 - ((max(width, height) - min(width, height)) / max(width, height))
+    long_side = max(width, height)
+    short_side = min(width, height)
+    ratio = 1 - ((long_side - short_side) / long_side)
 
-    if crop_mode:
-        if base_size == 1024:
-            valid_tokens = int(256 * ratio)
-        elif base_size == 1280:
-            valid_tokens = int(400 * ratio)
-        else:
-            valid_tokens = 0
-
-        if width > 640 or height > 640:
-            num_crops = calculate_num_crops(width, height, image_size)
-            if image_size == 640:
-                valid_tokens += num_crops * 100
-            elif image_size == 1024:
-                valid_tokens += num_crops * 256
+    if settings.base_size == 1280:
+        valid_tokens = int(400 * ratio)
+    elif settings.base_size == 1024:
+        valid_tokens = int(256 * ratio)
+    elif settings.base_size == 640:
+        valid_tokens = 100
+    elif settings.base_size == 512:
+        valid_tokens = 64
     else:
-        if base_size == 1024:
-            valid_tokens = int(256 * ratio)
-        elif base_size == 1280:
-            valid_tokens = int(400 * ratio)
-        elif base_size == 640:
-            valid_tokens = 100
-        elif base_size == 512:
-            valid_tokens = 64
-        else:
-            valid_tokens = 0
+        valid_tokens = 0
+
+    if settings.crop_mode and (width > 640 or height > 640):
+        num_crops = calculate_num_crops(width, height, settings.image_size)
+        crop_tokens = 256 if settings.image_size == 1024 else 100
+        valid_tokens += num_crops * crop_tokens
 
     return valid_tokens
 
@@ -181,7 +182,7 @@ def calculate_num_crops(
 ) -> int:
     """Calculate number of image crops for dynamic resolution mode."""
     aspect_ratio = width / height
-    target_ratios = set(
+    target_ratios = (
         (i, j)
         for n in range(min_crops, max_crops + 1)
         for i in range(1, n + 1)
@@ -189,16 +190,7 @@ def calculate_num_crops(
         if min_crops <= i * j <= max_crops
     )
 
-    best_ratio = (1, 1)
-    best_diff = float("inf")
-
-    for ratio in target_ratios:
-        target_ar = ratio[0] / ratio[1]
-        diff = abs(aspect_ratio - target_ar)
-        if diff < best_diff:
-            best_diff = diff
-            best_ratio = ratio
-
+    best_ratio = min(target_ratios, key=lambda r: abs(aspect_ratio - (r[0] / r[1])))
     return best_ratio[0] * best_ratio[1]
 
 
@@ -245,12 +237,13 @@ def run_ocr(
 
     vision_tokens = calculate_valid_vision_tokens(width, height, settings)
 
-    log.info(f"Running inference (mode={mode}, vision_tokens={vision_tokens})...")
+    logger.info(f"Running inference (mode={mode}, vision_tokens={vision_tokens})...")
+
     output = model.infer(
         tokenizer,
         prompt=prompt,
         image_file=image_path,
-        output_path=TMP_OUTPUT_PATH,
+        output_path=str(TMP_OUTPUT_PATH),
         base_size=settings.base_size,
         image_size=settings.image_size,
         crop_mode=settings.crop_mode,
@@ -267,7 +260,7 @@ def cmd_ocr(args: argparse.Namespace) -> None:
     """Run OCR evaluation on an image, optionally comparing to ground truth."""
     ground_truth = None
     if args.ground_truth:
-        if os.path.isfile(args.ground_truth):
+        if Path(args.ground_truth).is_file():
             with open(args.ground_truth, "r", encoding="utf-8") as f:
                 ground_truth = f.read()
         else:
@@ -279,48 +272,56 @@ def cmd_ocr(args: argparse.Namespace) -> None:
         width, height = img.size
         vision_tokens = calculate_valid_vision_tokens(width, height, settings)
 
-        log.info("=" * 60)
-        log.info("DeepSeek-OCR Evaluation (Dry Run)")
-        log.info("=" * 60)
-        log.info(f"\n[INPUT]\n  Image: {args.image}\n  Dimensions: {width} x {height}")
-        log.info(f"  Mode: {args.mode}")
-        log.info(f"\n[VISION TOKENS]\n  Valid vision tokens: {vision_tokens}")
+        logger.info("=" * 60)
+        logger.info("DeepSeek-OCR Evaluation (Dry Run)")
+        logger.info("=" * 60)
+        logger.info(
+            f"\n[INPUT]\n  Image: {args.image}\n  Dimensions: {width} x {height}"
+        )
+        logger.info(f"  Mode: {args.mode}")
+        logger.info(f"\n[VISION TOKENS]\n  Valid vision tokens: {vision_tokens}")
 
         if ground_truth:
             gt_tokens = tokenize_text(ground_truth)
             compression = gt_tokens / vision_tokens if vision_tokens > 0 else 0
-            log.info(f"\n[GROUND TRUTH]\n  Text length: {len(ground_truth)} characters")
-            log.info(f"  Approx tokens: {gt_tokens}")
-            log.info(f"\n[COMPRESSION]\n  Compression ratio: {compression:.2f}x")
+            logger.info(
+                f"\n[GROUND TRUTH]\n  Text length: {len(ground_truth)} characters"
+            )
+            logger.info(f"  Approx tokens: {gt_tokens}")
+            logger.info(f"\n[COMPRESSION]\n  Compression ratio: {compression:.2f}x")
         return
 
-    log.info("=" * 60)
-    log.info("DeepSeek-OCR Evaluation")
-    log.info("=" * 60)
+    logger.info("=" * 60)
+    logger.info("DeepSeek-OCR Evaluation")
+    logger.info("=" * 60)
 
     output, vision_tokens, output_tokens = run_ocr(args.image, args.mode, args.prompt)
     compression = output_tokens / vision_tokens if vision_tokens > 0 else 0
 
-    log.info(f"\n[RESULTS]\n  Vision tokens: {vision_tokens}")
-    log.info(f"  Output tokens: {output_tokens}\n  Compression ratio: {compression:.2f}x")
+    logger.info(f"\n[RESULTS]\n  Vision tokens: {vision_tokens}")
+    logger.info(
+        f"  Output tokens: {output_tokens}\n  Compression ratio: {compression:.2f}x"
+    )
 
     if ground_truth:
         metrics = calculate_edit_distance(output, ground_truth)
-        log.info(f"\n[ACCURACY]\n  Edit distance: {metrics['edit_distance']} characters")
-        log.info(
+        logger.info(
+            f"\n[ACCURACY]\n  Edit distance: {metrics['edit_distance']} characters"
+        )
+        logger.info(
             f"  Normalized ED: {metrics['normalized_ed']}\n  Precision: {metrics['precision']}%"
         )
 
     if args.show_output:
-        log.info(f"\n[OCR OUTPUT]\n{'-' * 60}")
-        log.info(output[:2000] + ("..." if len(output) > 2000 else ""))
+        logger.info(f"\n[OCR OUTPUT]\n{'-' * 60}")
+        logger.info(output[:2000] + ("..." if len(output) > 2000 else ""))
 
 
 def _ensure_blank_image() -> str:
     """Ensure a blank image exists for text-only inference and return its path."""
-    if not os.path.exists(TMP_BLANK_IMAGE):
+    if not TMP_BLANK_IMAGE.exists():
         Image.new("RGB", (32, 32), color="white").save(TMP_BLANK_IMAGE)
-    return TMP_BLANK_IMAGE
+    return str(TMP_BLANK_IMAGE)
 
 
 def _infer_with_text(
@@ -333,7 +334,7 @@ def _infer_with_text(
         tokenizer,
         prompt=prompt,
         image_file=_ensure_blank_image(),
-        output_path=TMP_OUTPUT_PATH,
+        output_path=str(TMP_OUTPUT_PATH),
         base_size=512,
         image_size=512,
         crop_mode=False,
@@ -355,7 +356,7 @@ def _infer_with_vision(
         tokenizer,
         prompt=prompt,
         image_file=image_path,
-        output_path=TMP_OUTPUT_PATH,
+        output_path=str(TMP_OUTPUT_PATH),
         base_size=settings.base_size,
         image_size=settings.image_size,
         crop_mode=settings.crop_mode,
@@ -373,17 +374,11 @@ def cmd_quality(args: argparse.Namespace) -> None:
     results_dir = root_dir / "results"
     results_dir.mkdir(exist_ok=True)
 
-    # Add file handler for this run
-    log_path = results_dir / f"quality_{args.mode}_{args.num_articles}articles.log"
-    file_handler = logging.FileHandler(log_path, mode="w")
-    file_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", "%H:%M:%S"))
-    log.addHandler(file_handler)
-
-    log.info("Loading QuALITY dataset...")
+    logger.info("Loading QuALITY dataset...")
     try:
         ds = load_dataset("emozilla/quality", split="validation")
     except Exception as e:
-        log.error(f"Error loading QuALITY dataset: {e}")
+        logger.error(f"Error loading QuALITY dataset: {e}")
         return
 
     # Group questions by article
@@ -400,7 +395,7 @@ def cmd_quality(args: argparse.Namespace) -> None:
             }
         )
 
-    log.info(f"Found {len(articles)} unique articles")
+    logger.info(f"Found {len(articles)} unique articles")
     article_items = list(articles.items())[: args.num_articles]
 
     model, tokenizer = load_model()
@@ -415,15 +410,15 @@ def cmd_quality(args: argparse.Namespace) -> None:
         "total": 0,
     }
 
-    log.info(f"\n{'=' * 70}")
-    log.info(f"QUALITY EXPERIMENT: Mode={args.mode}, Articles={args.num_articles}")
-    log.info("=" * 70)
+    logger.info(f"\n{'=' * 70}")
+    logger.info(f"QUALITY EXPERIMENT: Mode={args.mode}, Articles={args.num_articles}")
+    logger.info("=" * 70)
 
     for article_hash, article_data in article_items:
         article = article_data["article"]
         questions = article_data["questions"][: args.questions_per_article]
 
-        log.info(
+        logger.info(
             f"\n{'─' * 70}\nArticle: {article_hash} ({len(article.split())} words)\n{'─' * 70}"
         )
 
@@ -461,8 +456,8 @@ def cmd_quality(args: argparse.Namespace) -> None:
             text_correct = text_pred == expected
             vision_correct = vision_pred == expected
 
-            log.info(f"  Q: {question[:60]}...")
-            log.info(
+            logger.info(f"  Q: {question[:60]}...")
+            logger.info(
                 f"    Text: {text_pred} {'✓' if text_correct else '✗'}, Vision: {vision_pred} {'✓' if vision_correct else '✗'}"
             )
 
@@ -500,12 +495,10 @@ def cmd_quality(args: argparse.Namespace) -> None:
     with open(output_path, "w") as f:
         json.dump(results, f, indent=2)
 
-    log.info(
+    logger.info(
         f"\n{'=' * 70}\nRESULTS: Text={text_acc}%, Vision={vision_acc}%, Compression={compression:.1f}x"
     )
-    log.info(f"Saved to: {output_path}")
-    log.info(f"Log saved to: {log_path}")
-    log.removeHandler(file_handler)
+    logger.info(f"Saved to: {output_path}")
 
 
 def cmd_finewiki(args: argparse.Namespace) -> None:
@@ -516,32 +509,26 @@ def cmd_finewiki(args: argparse.Namespace) -> None:
     results_dir = root_dir / "results"
     results_dir.mkdir(exist_ok=True)
 
-    # Add file handler for this run
-    log_path = results_dir / f"finewiki_{args.mode}_{args.num_articles}articles.log"
-    file_handler = logging.FileHandler(log_path, mode="w")
-    file_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", "%H:%M:%S"))
-    log.addHandler(file_handler)
-
-    log.info("Loading FineWiki dataset...")
+    logger.info("Loading FineWiki dataset...")
     try:
         ds = load_dataset(
             "HuggingFaceFW/finewiki", name="en", split="train", streaming=True
         )
     except Exception as e:
-        log.error(f"Error loading FineWiki dataset: {e}")
+        logger.error(f"Error loading FineWiki dataset: {e}")
         return
 
     # Find articles with sufficient length
     articles = []
     min_words = args.context_words + args.continuation_words + 100
-    log.info(f"Finding {args.num_articles} articles with {min_words}+ words...")
+    logger.info(f"Finding {args.num_articles} articles with {min_words}+ words...")
 
     for item in ds:
         text = item["text"]
         words = text.split()
         if len(words) >= min_words:
             articles.append({"title": item.get("title", "Untitled"), "text": text})
-            log.info(f"  Found: {item.get('title', 'Untitled')[:50]}...")
+            logger.info(f"  Found: {item.get('title', 'Untitled')[:50]}...")
         if len(articles) >= args.num_articles:
             break
 
@@ -557,9 +544,9 @@ def cmd_finewiki(args: argparse.Namespace) -> None:
         "total": 0,
     }
 
-    log.info(f"\n{'=' * 70}")
-    log.info(f"FINEWIKI EXPERIMENT: Mode={args.mode}, Articles={args.num_articles}")
-    log.info("=" * 70)
+    logger.info(f"\n{'=' * 70}")
+    logger.info(f"FINEWIKI EXPERIMENT: Mode={args.mode}, Articles={args.num_articles}")
+    logger.info("=" * 70)
 
     for i, article in enumerate(articles):
         words = article["text"].split()
@@ -568,7 +555,9 @@ def cmd_finewiki(args: argparse.Namespace) -> None:
             words[args.context_words : args.context_words + args.continuation_words]
         )
 
-        log.info(f"\n{'─' * 70}\nArticle {i + 1}: {article['title'][:50]}...\n{'─' * 70}")
+        logger.info(
+            f"\n{'─' * 70}\nArticle {i + 1}: {article['title'][:50]}...\n{'─' * 70}"
+        )
 
         img_path = data_dir / f"article_{i}.png"
         if not img_path.exists():
@@ -604,7 +593,7 @@ def cmd_finewiki(args: argparse.Namespace) -> None:
             else 0
         )
 
-        log.info(
+        logger.info(
             f"  Text overlap: {text_overlap:.2f}, Vision overlap: {vision_overlap:.2f}"
         )
 
@@ -646,16 +635,14 @@ def cmd_finewiki(args: argparse.Namespace) -> None:
         with open(output_path, "w") as f:
             json.dump(results, f, indent=2)
 
-        log.info(
+        logger.info(
             f"\n{'=' * 70}\nRESULTS: Text={text_avg:.3f}, Vision={vision_avg:.3f}, Compression={compression:.1f}x"
         )
-        log.info(f"Saved to: {output_path}")
-        log.info(f"Log saved to: {log_path}")
-
-    log.removeHandler(file_handler)
+        logger.info(f"Saved to: {output_path}")
 
 
 def main() -> None:
+    """Main function to parse arguments and execute the specified command."""
     parser = argparse.ArgumentParser(
         description="DeepSeek-OCR evaluation and experiments",
         formatter_class=argparse.RawDescriptionHelpFormatter,
