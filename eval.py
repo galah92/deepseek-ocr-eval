@@ -68,45 +68,22 @@ _model: AutoModel | None = None
 _tokenizer: AutoTokenizer | None = None
 
 
-# ============================================================================
-# Font Utilities
-# ============================================================================
-
-
-def _get_mono_font_paths() -> list[str]:
-    """Get monospace font paths based on the current platform."""
-    system = platform.system()
-    if system == "Linux":
-        return [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
-            "/usr/share/fonts/truetype/freefont/FreeMono.ttf",
-        ]
-    elif system == "Darwin":  # macOS
-        return [
-            "/System/Library/Fonts/Menlo.ttc",
-            "/System/Library/Fonts/Monaco.ttf",
-            "/Library/Fonts/Courier New.ttf",
-        ]
-    elif system == "Windows":
-        return [
-            "C:/Windows/Fonts/consola.ttf",
-            "C:/Windows/Fonts/cour.ttf",
-            "C:/Windows/Fonts/lucon.ttf",
-        ]
-    return []
-
-
-FONT_PATHS = _get_mono_font_paths()
+# Default monospace font path per platform
+MONO_FONT_PATH: dict[str, str] = {
+    "Linux": "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+    "Darwin": "/System/Library/Fonts/Menlo.ttc",
+    "Windows": "C:/Windows/Fonts/consola.ttf",
+}
 
 
 def get_font(size: int = 14) -> FreeTypeFont:
-    """Load a monospace font with fallback to default."""
-    for path in FONT_PATHS:
+    """Load the platform's default monospace font, or fall back to PIL default."""
+    font_path = MONO_FONT_PATH.get(platform.system())
+    if font_path:
         try:
-            return ImageFont.truetype(path, size)
+            return ImageFont.truetype(font_path, size)
         except (OSError, IOError):
-            continue
+            pass
     print("Warning: No monospace font found, using default font", file=sys.stderr)
     return ImageFont.load_default()
 
