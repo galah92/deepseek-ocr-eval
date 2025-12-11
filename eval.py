@@ -831,6 +831,77 @@ def to_char_level(text: str) -> str:
     return ''.join(result).rstrip()
 
 
+def scramble_word(word: str, seed: int = 42) -> str:
+    """Scramble middle letters of a word, keeping first and last intact.
+
+    Implements the "Cambridge University" effect:
+    "According to research at Cambridge University, it doesn't matter
+    in what order the letters in a word are, the only important thing
+    is that the first and last letter be at the right place."
+
+    Examples:
+        "according" → "aoccdrnig"
+        "research" → "rsjeerach"
+        "the" → "the" (too short to scramble)
+
+    Args:
+        word: Input word
+        seed: Random seed for reproducibility
+
+    Returns:
+        Word with middle letters scrambled
+    """
+    # Only scramble if word is long enough (need at least 4 chars to scramble middle)
+    if len(word) <= 3:
+        return word
+
+    # Extract letters only (preserve punctuation positions)
+    letters = [c for c in word if c.isalpha()]
+    if len(letters) <= 3:
+        return word
+
+    # Scramble middle letters
+    middle = list(letters[1:-1])
+    rng = random.Random(seed + hash(word) % 10000)
+    rng.shuffle(middle)
+
+    # Reconstruct with scrambled middle
+    scrambled_letters = [letters[0]] + middle + [letters[-1]]
+
+    # Put back into original word (preserving punctuation)
+    result = []
+    letter_idx = 0
+    for c in word:
+        if c.isalpha():
+            result.append(scrambled_letters[letter_idx])
+            letter_idx += 1
+        else:
+            result.append(c)
+
+    return ''.join(result)
+
+
+def scramble_text(text: str, seed: int = 42) -> str:
+    """Apply word scrambling to entire text.
+
+    Scrambles middle letters of each word while preserving:
+    - First and last letters of each word
+    - Word boundaries
+    - Punctuation
+    - Capitalization patterns
+
+    Args:
+        text: Input text
+        seed: Random seed for reproducibility
+
+    Returns:
+        Text with all words scrambled
+    """
+    words = text.split()
+    scrambled_words = [scramble_word(w, seed) for w in words]
+    return ' '.join(scrambled_words)
+
+
 def _get_symspell():
     """Get or create singleton SymSpell instance."""
     global _symspell_instance
@@ -2671,6 +2742,225 @@ def cmd_char_level(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_word_scramble(args: argparse.Namespace) -> None:
+    """Run word scrambling experiment (Cambridge University effect).
+
+    Tests the Word Shape Recognition Hypothesis: Does vision recognize words
+    by their overall shape (first/last letters, length, ascenders/descenders)
+    rather than exact character sequences?
+
+    Compares four conditions:
+    1. Clean text: Normal text tokens (baseline)
+    2. Scrambled text: Words with middle letters shuffled
+    3. Clean vision: Normal rendered text
+    4. Scrambled vision: Rendered scrambled text
+
+    If vision handles scrambling better than text, it confirms shape-level processing.
+    Humans can read "Aoccdrnig to rsjeerach" easily - can vision?
+    """
+    data_dir, results_dir = setup_experiment_dirs("word_scramble")
+
+    logger.info("Loading QuALITY dataset...")
+    try:
+        ds = load_dataset("emozilla/quality", split="validation")
+    except Exception as e:
+        logger.error(f"Error loading QuALITY dataset: {e}")
+        return
+
+    # Group questions by article
+    articles_dict = {}
+    for item in ds:
+        article_hash = hashlib.md5(item["article"][:100].encode()).hexdigest()[:8]
+        if article_hash not in articles_dict:
+            articles_dict[article_hash] = {"article": item["article"], "questions": []}
+        articles_dict[article_hash]["questions"].append(
+            {
+                "question": item["question"],
+                "options": item["options"],
+                "gold_label": item["answer"],
+            }
+        )
+
+    article_hashes = list(articles_dict.keys())[: args.num_articles]
+    logger.info(f"Found {len(articles_dict)} unique articles")
+
+    model, tokenizer = load_model()
+
+    logger.info("WORD SCRAMBLING EXPERIMENT (Cambridge University Effect)")
+    logger.info(f"Articles: {args.num_articles}, Questions/article: {args.questions_per_article}")
+    logger.info("Conditions: clean_text, scrambled_text, clean_vision, scrambled_vision")
+
+    results = {
+        "experiment": "word_scramble",
+        "articles": {},
+    }
+
+    # Track stats
+    stats = {
+        "clean_text_correct": 0,
+        "scrambled_text_correct": 0,
+        "clean_vision_correct": 0,
+        "scrambled_vision_correct": 0,
+        "total": 0,
+    }
+
+    for article_hash in article_hashes:
+        article_data = articles_dict[article_hash]
+        article = article_data["article"]
+        questions = article_data["questions"][: args.questions_per_article]
+
+        word_count = len(article.split())
+        logger.info(f"\nArticle: {article_hash} ({word_count} words)")
+
+        # Truncate article for text mode to avoid OOM
+        truncated_article = " ".join(article.split()[:2000])
+
+        # Create scrambled version
+        scrambled_article = scramble_text(truncated_article, seed=42)
+
+        # Render both versions to images
+        clean_img_path = data_dir / f"{article_hash}_clean.png"
+        scrambled_img_path = data_dir / f"{article_hash}_scrambled.png"
+
+        if not clean_img_path.exists():
+            render_text_to_image(truncated_article, str(clean_img_path))
+        if not scrambled_img_path.exists():
+            render_text_to_image(scrambled_article, str(scrambled_img_path))
+
+        results["articles"][article_hash] = {"questions": []}
+
+        for question_data in questions:
+            question = question_data["question"]
+            options = question_data["options"]
+            expected = question_data["gold_label"]
+
+            options_text = "\n".join(f"[{i}] {opt}" for i, opt in enumerate(options))
+
+            # Scrambled versions of question and options
+            scrambled_question = scramble_text(question, seed=43)
+            scrambled_options = scramble_text(options_text, seed=44)
+
+            # Condition 1: Clean text
+            clean_text_prompt = f"<image>\n{truncated_article}\n\nQuestion: {question}\n\nOptions:\n{options_text}\n\nAnswer with just the option number (0, 1, 2, or 3):"
+            clean_text_output, _, _ = run_inference(
+                clean_text_prompt, "", mode="text", model=model, tokenizer=tokenizer
+            )
+            clean_text_pred = parse_mc_answer(clean_text_output)
+
+            # Condition 2: Scrambled text
+            scrambled_text_prompt = f"<image>\n{scrambled_article}\n\nQuestion: {scrambled_question}\n\nOptions:\n{scrambled_options}\n\nAnswer with just the option number (0, 1, 2, or 3):"
+            scrambled_text_output, _, _ = run_inference(
+                scrambled_text_prompt, "", mode="text", model=model, tokenizer=tokenizer
+            )
+            scrambled_text_pred = parse_mc_answer(scrambled_text_output)
+
+            # Condition 3: Clean vision
+            clean_vision_prompt = f"<image>\n\nQuestion: {question}\n\nOptions:\n{options_text}\n\nAnswer with just the option number (0, 1, 2, or 3):"
+            clean_vision_output, _, _ = run_inference(
+                clean_vision_prompt, str(clean_img_path), mode=args.mode, model=model, tokenizer=tokenizer
+            )
+            clean_vision_pred = parse_mc_answer(clean_vision_output)
+
+            # Condition 4: Scrambled vision
+            scrambled_vision_prompt = f"<image>\n\nQuestion: {scrambled_question}\n\nOptions:\n{scrambled_options}\n\nAnswer with just the option number (0, 1, 2, or 3):"
+            scrambled_vision_output, _, _ = run_inference(
+                scrambled_vision_prompt, str(scrambled_img_path), mode=args.mode, model=model, tokenizer=tokenizer
+            )
+            scrambled_vision_pred = parse_mc_answer(scrambled_vision_output)
+
+            clean_text_correct = clean_text_pred == expected
+            scrambled_text_correct = scrambled_text_pred == expected
+            clean_vision_correct = clean_vision_pred == expected
+            scrambled_vision_correct = scrambled_vision_pred == expected
+
+            logger.info(
+                f"  Q: {question[:40]}... | "
+                f"CT:{clean_text_pred}{'✓' if clean_text_correct else '✗'} | "
+                f"ST:{scrambled_text_pred}{'✓' if scrambled_text_correct else '✗'} | "
+                f"CV:{clean_vision_pred}{'✓' if clean_vision_correct else '✗'} | "
+                f"SV:{scrambled_vision_pred}{'✓' if scrambled_vision_correct else '✗'}"
+            )
+
+            question_results = {
+                "question": question[:100],
+                "expected": expected,
+                "clean_text_pred": clean_text_pred,
+                "scrambled_text_pred": scrambled_text_pred,
+                "clean_vision_pred": clean_vision_pred,
+                "scrambled_vision_pred": scrambled_vision_pred,
+                "clean_text_correct": clean_text_correct,
+                "scrambled_text_correct": scrambled_text_correct,
+                "clean_vision_correct": clean_vision_correct,
+                "scrambled_vision_correct": scrambled_vision_correct,
+            }
+
+            results["articles"][article_hash]["questions"].append(question_results)
+
+            stats["total"] += 1
+            if clean_text_correct:
+                stats["clean_text_correct"] += 1
+            if scrambled_text_correct:
+                stats["scrambled_text_correct"] += 1
+            if clean_vision_correct:
+                stats["clean_vision_correct"] += 1
+            if scrambled_vision_correct:
+                stats["scrambled_vision_correct"] += 1
+
+    # Summary
+    logger.info("\n" + "=" * 80)
+    logger.info("WORD SCRAMBLING EXPERIMENT RESULTS")
+    logger.info("=" * 80)
+    logger.info(f"Total questions: {stats['total']}")
+    logger.info("")
+
+    n = stats["total"]
+    if n > 0:
+        clean_text_acc = stats["clean_text_correct"] / n * 100
+        scrambled_text_acc = stats["scrambled_text_correct"] / n * 100
+        clean_vision_acc = stats["clean_vision_correct"] / n * 100
+        scrambled_vision_acc = stats["scrambled_vision_correct"] / n * 100
+
+        text_drop = clean_text_acc - scrambled_text_acc
+        vision_drop = clean_vision_acc - scrambled_vision_acc
+
+        logger.info(f"{'Condition':<20} | {'Accuracy':<10} | {'vs Clean':<10}")
+        logger.info("-" * 50)
+        logger.info(f"{'Clean Text':<20} | {clean_text_acc:>8.1f}% | {'(baseline)':<10}")
+        logger.info(f"{'Scrambled Text':<20} | {scrambled_text_acc:>8.1f}% | {-text_drop:>+8.1f}%")
+        logger.info(f"{'Clean Vision':<20} | {clean_vision_acc:>8.1f}% | {'(baseline)':<10}")
+        logger.info(f"{'Scrambled Vision':<20} | {scrambled_vision_acc:>8.1f}% | {-vision_drop:>+8.1f}%")
+
+        logger.info("\n" + "-" * 50)
+        logger.info("KEY FINDINGS:")
+        logger.info(f"  Text accuracy drop from scrambling: {text_drop:+.1f}%")
+        logger.info(f"  Vision accuracy drop from scrambling: {vision_drop:+.1f}%")
+
+        if vision_drop < text_drop - 10:
+            logger.info("  → Vision is MORE ROBUST to scrambling than text!")
+            logger.info("  → Supports Word Shape Recognition hypothesis")
+        elif abs(vision_drop - text_drop) < 10:
+            logger.info("  → Vision and text similarly affected by scrambling")
+            logger.info("  → Word shape recognition may not be the main factor")
+        else:
+            logger.info("  → Vision is MORE SENSITIVE to scrambling than text")
+            logger.info("  → Unexpected result - needs investigation")
+
+        results["summary"] = {
+            "clean_text_acc": clean_text_acc,
+            "scrambled_text_acc": scrambled_text_acc,
+            "clean_vision_acc": clean_vision_acc,
+            "scrambled_vision_acc": scrambled_vision_acc,
+            "text_drop": text_drop,
+            "vision_drop": vision_drop,
+        }
+
+    save_experiment_results(
+        results,
+        results_dir,
+        f"word_scramble_{args.mode}_{args.num_articles}articles.json",
+    )
+
+
 def cmd_augmented(args: argparse.Namespace) -> None:
     """Run augmented rendering experiment comparing plain vs highlighted text.
 
@@ -3758,6 +4048,22 @@ def main() -> None:
     char_level_parser.add_argument("--questions-per-article", type=int, default=5)
     char_level_parser.set_defaults(func=cmd_char_level)
 
+    # Word scrambling experiment command
+    word_scramble_parser = subparsers.add_parser(
+        "word-scramble",
+        help="Run word scrambling experiment (Cambridge University effect)",
+    )
+    word_scramble_parser.add_argument(
+        "--mode",
+        type=str,
+        default="large",
+        choices=EXPERIMENT_MODES,
+        help="Vision mode to use",
+    )
+    word_scramble_parser.add_argument("--num-articles", type=int, default=2)
+    word_scramble_parser.add_argument("--questions-per-article", type=int, default=3)
+    word_scramble_parser.set_defaults(func=cmd_word_scramble)
+
     # Tables experiment command (Experiment B)
     tables_parser = subparsers.add_parser(
         "tables", help="Run WikiTableQuestions experiment (Experiment B)"
@@ -3817,6 +4123,8 @@ def main() -> None:
         cmd_rendering_ablations(args)
     elif args.command == "char-level":
         cmd_char_level(args)
+    elif args.command == "word-scramble":
+        cmd_word_scramble(args)
     elif args.command == "tables":
         cmd_tables(args)
     elif args.command == "augmented":
