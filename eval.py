@@ -641,6 +641,139 @@ def inject_noise(text: str, noise_type: str, rate: float, seed: int = 42) -> str
         raise ValueError(f"Unknown noise type: {noise_type}")
 
 
+def correct_spelling(text: str) -> str:
+    """Apply spell correction to text using pyspellchecker.
+
+    Args:
+        text: Input text (possibly with typos/noise)
+
+    Returns:
+        Spell-corrected text
+    """
+    from spellchecker import SpellChecker
+
+    spell = SpellChecker()
+
+    # Split into words while preserving structure
+    words = text.split()
+    corrected_words = []
+
+    for word in words:
+        # Extract punctuation
+        prefix = ""
+        suffix = ""
+        core = word
+
+        # Handle leading punctuation
+        while core and not core[0].isalnum():
+            prefix += core[0]
+            core = core[1:]
+
+        # Handle trailing punctuation
+        while core and not core[-1].isalnum():
+            suffix = core[-1] + suffix
+            core = core[:-1]
+
+        if core:
+            # Check if word is misspelled
+            if core.lower() in spell:
+                corrected = core
+            else:
+                correction = spell.correction(core.lower())
+                if correction:
+                    # Preserve original case pattern
+                    if core.isupper():
+                        corrected = correction.upper()
+                    elif core[0].isupper():
+                        corrected = correction.capitalize()
+                    else:
+                        corrected = correction
+                else:
+                    corrected = core
+
+            corrected_words.append(prefix + corrected + suffix)
+        else:
+            corrected_words.append(word)
+
+    return " ".join(corrected_words)
+
+
+_symspell_instance = None
+
+
+def _get_symspell():
+    """Get or create singleton SymSpell instance."""
+    global _symspell_instance
+    if _symspell_instance is None:
+        import pkg_resources
+        from symspellpy import SymSpell, Verbosity
+
+        _symspell_instance = SymSpell(max_dictionary_edit_distance=2, prefix_length=7)
+        # Load frequency dictionary
+        dict_path = pkg_resources.resource_filename(
+            "symspellpy", "frequency_dictionary_en_82_765.txt"
+        )
+        _symspell_instance.load_dictionary(dict_path, 0, 1)
+    return _symspell_instance
+
+
+def correct_spelling_fast(text: str) -> str:
+    """Fast spell correction using SymSpell (symmetric delete algorithm).
+
+    Args:
+        text: Input text (possibly with typos/noise)
+
+    Returns:
+        Spell-corrected text
+    """
+    from symspellpy import Verbosity
+
+    sym_spell = _get_symspell()
+
+    # Split text into lines to preserve structure
+    lines = text.split("\n")
+    corrected_lines = []
+
+    for line in lines:
+        words = line.split()
+        corrected_words = []
+
+        for word in words:
+            # Extract punctuation
+            prefix = ""
+            suffix = ""
+            core = word
+
+            while core and not core[0].isalnum():
+                prefix += core[0]
+                core = core[1:]
+
+            while core and not core[-1].isalnum():
+                suffix = core[-1] + suffix
+                core = core[:-1]
+
+            if core and len(core) > 1:  # Only check words with 2+ chars
+                lower_core = core.lower()
+                suggestions = sym_spell.lookup(
+                    lower_core, Verbosity.CLOSEST, max_edit_distance=2
+                )
+                if suggestions and suggestions[0].term != lower_core:
+                    correction = suggestions[0].term
+                    # Preserve case
+                    if core.isupper():
+                        core = correction.upper()
+                    elif core[0].isupper():
+                        core = correction.capitalize()
+                    else:
+                        core = correction
+
+            corrected_words.append(prefix + core + suffix)
+
+        corrected_lines.append(" ".join(corrected_words))
+
+    return "\n".join(corrected_lines)
+
+
 # ============================================================================
 # Table Rendering Functions (Experiment B: Structured Data)
 # ============================================================================
@@ -1674,6 +1807,266 @@ def cmd_noise(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_noise_baselines(args: argparse.Namespace) -> None:
+    """Run noise experiment with multiple baselines (Experiment A extended).
+
+    Compares:
+    1. Raw noisy text (baseline)
+    2. Spell-corrected noisy text
+    3. Vision (noisy text rendered as image)
+
+    This helps answer: Is vision's robustness unique, or can simple preprocessing match it?
+    """
+    data_dir, results_dir = setup_experiment_dirs("noise_baselines")
+
+    logger.info("Loading QuALITY dataset...")
+    try:
+        ds = load_dataset("emozilla/quality", split="validation")
+    except Exception as e:
+        logger.error(f"Error loading QuALITY dataset: {e}")
+        return
+
+    # Group questions by article
+    articles: dict[str, dict] = {}
+    for item in ds:
+        article_hash = hashlib.md5(item["article"][:100].encode()).hexdigest()[:8]
+        if article_hash not in articles:
+            articles[article_hash] = {"article": item["article"], "questions": []}
+        articles[article_hash]["questions"].append(
+            {
+                "question": item["question"],
+                "options": item["options"],
+                "answer": item["answer"],
+            }
+        )
+
+    logger.info(f"Found {len(articles)} unique articles")
+    article_items = list(articles.items())[: args.num_articles]
+
+    model, tokenizer = load_model()
+
+    # Parse noise levels
+    noise_levels = [float(x) for x in args.noise_levels.split(",")]
+
+    results: dict = {
+        "mode": args.mode,
+        "noise_type": args.noise_type,
+        "noise_levels": noise_levels,
+        "baselines": ["text_raw", "text_corrected", "vision"],
+        "articles": {},
+        "summary": {},
+    }
+
+    # Track accuracy at each noise level for each baseline
+    level_stats: dict[float, dict[str, int]] = {
+        level: {
+            "text_raw_correct": 0,
+            "text_corrected_correct": 0,
+            "vision_correct": 0,
+            "total": 0,
+        }
+        for level in noise_levels
+    }
+
+    logger.info(f"NOISE BASELINES EXPERIMENT: Mode={args.mode}, Type={args.noise_type}")
+    logger.info(f"Noise levels: {noise_levels}")
+    logger.info(f"Baselines: raw text, spell-corrected text, vision")
+    logger.info(
+        f"Articles: {args.num_articles}, Questions/article: {args.questions_per_article}"
+    )
+
+    for article_hash, article_data in article_items:
+        article = article_data["article"]
+        questions = article_data["questions"][: args.questions_per_article]
+
+        logger.info(f"\nArticle: {article_hash} ({len(article.split())} words)")
+
+        article_results: dict = {
+            "questions": [],
+        }
+
+        for qa in questions:
+            question, options, expected = qa["question"], qa["options"], qa["answer"]
+            options_text = "\n".join(f"{i}. {opt}" for i, opt in enumerate(options))
+
+            question_results: dict = {
+                "question": question[:100],
+                "expected": expected,
+                "levels": {},
+            }
+
+            for level in noise_levels:
+                # Apply noise to article text
+                noisy_article = inject_noise(
+                    article,
+                    args.noise_type,
+                    level,
+                    seed=42 + int(level * 1000),
+                )
+
+                # Apply spell correction to noisy article
+                corrected_article = correct_spelling_fast(noisy_article)
+
+                # Render noisy article to image
+                img_path = data_dir / f"{article_hash}_noise{int(level * 100)}.png"
+                if not img_path.exists():
+                    render_text_to_image(noisy_article, str(img_path))
+
+                # Baseline 1: Raw noisy text
+                text_raw_prompt = f"<image>\n{noisy_article}\n\nQuestion: {question}\n\nOptions:\n{options_text}\n\nAnswer with just the option number (0, 1, 2, or 3):"
+                text_raw_output, _, _ = run_inference(
+                    text_raw_prompt,
+                    "",
+                    mode="text",
+                    model=model,
+                    tokenizer=tokenizer,
+                )
+
+                # Baseline 2: Spell-corrected text
+                text_corrected_prompt = f"<image>\n{corrected_article}\n\nQuestion: {question}\n\nOptions:\n{options_text}\n\nAnswer with just the option number (0, 1, 2, or 3):"
+                text_corrected_output, _, _ = run_inference(
+                    text_corrected_prompt,
+                    "",
+                    mode="text",
+                    model=model,
+                    tokenizer=tokenizer,
+                )
+
+                # Baseline 3: Vision (noisy text rendered as image)
+                vision_prompt = f"<image>\n\nQuestion: {question}\n\nOptions:\n{options_text}\n\nAnswer with just the option number (0, 1, 2, or 3):"
+                vision_output, _, _ = run_inference(
+                    vision_prompt,
+                    str(img_path),
+                    mode=args.mode,
+                    model=model,
+                    tokenizer=tokenizer,
+                )
+
+                # Parse answers
+                text_raw_pred = parse_mc_answer(text_raw_output)
+                text_corrected_pred = parse_mc_answer(text_corrected_output)
+                vision_pred = parse_mc_answer(vision_output)
+
+                text_raw_correct = text_raw_pred == expected
+                text_corrected_correct = text_corrected_pred == expected
+                vision_correct = vision_pred == expected
+
+                level_str = f"{int(level * 100)}%"
+                logger.info(
+                    f"  [{level_str:>3}] Q: {question[:30]}... | "
+                    f"Raw: {text_raw_pred} {'✓' if text_raw_correct else '✗'} | "
+                    f"Corrected: {text_corrected_pred} {'✓' if text_corrected_correct else '✗'} | "
+                    f"Vision: {vision_pred} {'✓' if vision_correct else '✗'}"
+                )
+
+                question_results["levels"][level] = {
+                    "text_raw_pred": text_raw_pred,
+                    "text_corrected_pred": text_corrected_pred,
+                    "vision_pred": vision_pred,
+                    "text_raw_correct": text_raw_correct,
+                    "text_corrected_correct": text_corrected_correct,
+                    "vision_correct": vision_correct,
+                }
+
+                level_stats[level]["total"] += 1
+                if text_raw_correct:
+                    level_stats[level]["text_raw_correct"] += 1
+                if text_corrected_correct:
+                    level_stats[level]["text_corrected_correct"] += 1
+                if vision_correct:
+                    level_stats[level]["vision_correct"] += 1
+
+            article_results["questions"].append(question_results)
+
+        results["articles"][article_hash] = article_results
+
+    # Calculate summary statistics
+    summary_by_level = {}
+    for level in noise_levels:
+        n = level_stats[level]["total"]
+        if n > 0:
+            text_raw_acc = round(level_stats[level]["text_raw_correct"] / n * 100, 1)
+            text_corrected_acc = round(
+                level_stats[level]["text_corrected_correct"] / n * 100, 1
+            )
+            vision_acc = round(level_stats[level]["vision_correct"] / n * 100, 1)
+            summary_by_level[level] = {
+                "total": n,
+                "text_raw_accuracy": text_raw_acc,
+                "text_corrected_accuracy": text_corrected_acc,
+                "vision_accuracy": vision_acc,
+                "correction_improvement": round(text_corrected_acc - text_raw_acc, 1),
+                "vision_vs_raw": round(vision_acc - text_raw_acc, 1),
+                "vision_vs_corrected": round(vision_acc - text_corrected_acc, 1),
+            }
+
+    results["summary"] = {
+        "by_level": summary_by_level,
+        "noise_type": args.noise_type,
+    }
+
+    # Log results table
+    logger.info("\n" + "=" * 80)
+    logger.info("NOISE BASELINES EXPERIMENT RESULTS")
+    logger.info("=" * 80)
+    logger.info(f"Noise type: {args.noise_type}")
+    logger.info(f"Total questions per level: {level_stats[noise_levels[0]]['total']}")
+    logger.info("")
+    logger.info(
+        f"{'Noise':<8} | {'Raw Text':<10} | {'Corrected':<10} | {'Vision':<10} | {'V vs Raw':<10} | {'V vs Corr':<10}"
+    )
+    logger.info("-" * 75)
+
+    for level in noise_levels:
+        stats = summary_by_level.get(level, {})
+        raw_acc = stats.get("text_raw_accuracy", 0)
+        corr_acc = stats.get("text_corrected_accuracy", 0)
+        vision_acc = stats.get("vision_accuracy", 0)
+        v_vs_raw = stats.get("vision_vs_raw", 0)
+        v_vs_corr = stats.get("vision_vs_corrected", 0)
+        level_str = f"{int(level * 100)}%"
+        v_raw_str = f"+{v_vs_raw}" if v_vs_raw > 0 else str(v_vs_raw)
+        v_corr_str = f"+{v_vs_corr}" if v_vs_corr > 0 else str(v_vs_corr)
+        logger.info(
+            f"{level_str:<8} | {raw_acc:>8}% | {corr_acc:>8}% | {vision_acc:>8}% | {v_raw_str:>8} | {v_corr_str:>8}"
+        )
+
+    # Key findings
+    logger.info("\n" + "-" * 75)
+    logger.info("KEY FINDINGS:")
+
+    # Does spell correction help?
+    avg_correction_improvement = sum(
+        summary_by_level.get(lvl, {}).get("correction_improvement", 0)
+        for lvl in noise_levels
+    ) / len(noise_levels)
+    logger.info(
+        f"  Spell correction avg improvement over raw: {avg_correction_improvement:+.1f}%"
+    )
+
+    # Does vision beat corrected text?
+    avg_vision_vs_corrected = sum(
+        summary_by_level.get(lvl, {}).get("vision_vs_corrected", 0)
+        for lvl in noise_levels
+    ) / len(noise_levels)
+    logger.info(
+        f"  Vision avg advantage over corrected text: {avg_vision_vs_corrected:+.1f}%"
+    )
+
+    if avg_vision_vs_corrected > 0:
+        logger.info(
+            "  → Vision outperforms even spell-corrected text (unique robustness)"
+        )
+    else:
+        logger.info("  → Spell correction matches or beats vision (no unique advantage)")
+
+    save_experiment_results(
+        results,
+        results_dir,
+        f"noise_baselines_{args.noise_type}_{args.mode}_{args.num_articles}articles.json",
+    )
+
+
 def cmd_augmented(args: argparse.Namespace) -> None:
     """Run augmented rendering experiment comparing plain vs highlighted text.
 
@@ -2685,6 +3078,36 @@ def main() -> None:
         action="store_true",
         help="Also apply noise to question and options (default: article only)",
     )
+    noise_parser.set_defaults(func=cmd_noise)
+
+    # Noise baselines experiment command (Experiment A extended)
+    noise_baselines_parser = subparsers.add_parser(
+        "noise-baselines",
+        help="Run noise experiment with multiple baselines (raw, spell-corrected, vision)",
+    )
+    noise_baselines_parser.add_argument(
+        "--mode",
+        type=str,
+        default="large",
+        choices=EXPERIMENT_MODES,
+        help="Vision mode to use",
+    )
+    noise_baselines_parser.add_argument(
+        "--noise-type",
+        type=str,
+        default="typos",
+        choices=["typos", "ocr", "deletions", "insertions", "mixed"],
+        help="Type of noise to inject",
+    )
+    noise_baselines_parser.add_argument(
+        "--noise-levels",
+        type=str,
+        default="0,0.05,0.10,0.15,0.20",
+        help="Comma-separated noise rates (0.0 to 1.0)",
+    )
+    noise_baselines_parser.add_argument("--num-articles", type=int, default=5)
+    noise_baselines_parser.add_argument("--questions-per-article", type=int, default=5)
+    noise_baselines_parser.set_defaults(func=cmd_noise_baselines)
 
     # Tables experiment command (Experiment B)
     tables_parser = subparsers.add_parser(
@@ -2739,6 +3162,8 @@ def main() -> None:
         cmd_truncation(args)
     elif args.command == "noise":
         cmd_noise(args)
+    elif args.command == "noise-baselines":
+        cmd_noise_baselines(args)
     elif args.command == "tables":
         cmd_tables(args)
     elif args.command == "augmented":
