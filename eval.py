@@ -1,5 +1,3 @@
-"""Evaluate DeepSeek-OCR compression ratio and accuracy on document images."""
-
 import argparse
 import hashlib
 import json
@@ -17,13 +15,6 @@ from matplotlib import font_manager
 from PIL import Image, ImageDraw, ImageFont
 from transformers import AutoModel, AutoTokenizer
 
-# Suppress specific transformers warning
-warnings.filterwarnings(
-    "ignore",
-    message="`do_sample` is set to `False`. However, `temperature` is set to `0.0`",
-    category=UserWarning,
-)
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(message)s",
@@ -33,8 +24,15 @@ logging.basicConfig(
         logging.FileHandler("deepseek_ocr.log", mode="w"),
     ],
 )
-logging.getLogger("transformers").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
+
+# Suppress specific transformers warning
+warnings.filterwarnings(
+    "ignore",
+    message="`do_sample` is set to `False`. However, `temperature` is set to `0.0`",
+    category=UserWarning,
+)
+logging.getLogger("transformers").setLevel(logging.ERROR)
 
 # Temporary paths for experiments
 TMP_OUTPUT_PATH = Path("/tmp/deepseek_ocr_output")
@@ -77,7 +75,7 @@ MONO_FONT_PATH = font_manager.findfont("monospace")
 def load_model() -> tuple[AutoModel, AutoTokenizer]:
     """Load the DeepSeek-OCR model (cached after first load)."""
     global _model, _tokenizer
-    if _model is not None:
+    if _model is not None and _tokenizer is not None:
         return _model, _tokenizer
 
     import torch
@@ -397,7 +395,7 @@ def calculate_num_crops(
 
 def tokenize_text(text: str, tokenizer: AutoTokenizer | None = None) -> int:
     """Count tokens in text using the model's tokenizer or approximation."""
-    if tokenizer:
+    if tokenizer is not None:
         return len(tokenizer.encode(text, add_special_tokens=False))
     return int(len(text.split()) * 1.3)
 
