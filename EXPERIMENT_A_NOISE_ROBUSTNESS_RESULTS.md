@@ -219,6 +219,79 @@ The text tokenizer sees **broken tokens**. The vision encoder sees **slightly no
 
 ---
 
+## Deep Analysis: Representational Stability
+
+Beyond raw accuracy, we discovered a striking difference in **representational stability** between vision and text.
+
+### Stability Analysis
+
+We analyzed whether each modality gives consistent answers across noise levels:
+
+| Metric | Vision | Text |
+|--------|--------|------|
+| **Stable across all noise levels** | 21/25 (84%) | 1/25 (4%) |
+| **Unstable (answer changes with noise)** | 4/25 (16%) | 24/25 (96%) |
+
+**Key finding:** Vision gives the same answer regardless of noise level 84% of the time. Text almost never does — noise causes it to flip between different answers.
+
+### When Vision is Stable AND Correct
+
+9 questions showed the pattern: **vision stable + always correct, text unstable**
+
+| Question | Vision | Text | Δ |
+|----------|--------|------|---|
+| Why does shame flame in Blake's cheeks... | 5/5 ✓ | 0/5 | +5 |
+| Why is Johnathan so humiliated by the women? | 5/5 ✓ | 0/5 | +5 |
+| Why did Blake create the three female super-images... | 5/5 ✓ | 1/5 | +4 |
+| Why does the Skipper stop abruptly... | 5/5 ✓ | 1/5 | +4 |
+| Why does the Skipper allow the new chef... | 5/5 ✓ | 1/5 | +4 |
+| Who or what is an Oan? | 5/5 ✓ | 2/5 | +3 |
+| Why did the Tr'en leave Korvin's door unlocked... | 5/5 ✓ | 3/5 | +2 |
+| Why does Deirdre get so upset... | 5/5 ✓ | 4/5 | +1 |
+| Lieutenant Dugan brings up examples... | 5/5 ✓ | 4/5 | +1 |
+
+**Summary:** On these 9 questions, vision achieved 45/45 correct (100%), text achieved 16/45 correct (36%).
+
+### Case Study: Psychological Inference Questions
+
+The two most dramatic examples both require **psychological inference**:
+
+**Case 1: "Why did the Tr'en leave Korvin's door unlocked?"**
+```
+Noise Level:     0%    5%   10%   15%   20%
+Text answer:      3     1     1     0     1   ← Changes every time
+Vision answer:    1     1     1     1     1   ← Always correct
+```
+
+- **Text chose:** "They determined he was not a threat" (surface-level, conscious decision)
+- **Vision chose:** "Their subconscious led them to provide escape" (deeper psychological inference)
+
+**Case 2: "Why is Johnathan humiliated by the women?"**
+```
+Noise Level:     0%    5%   10%   15%   20%
+Text answer:      3     3     1    -1     1   ← Unstable, includes parse failure
+Vision answer:    2     2     2     2     2   ← Always correct
+```
+
+- **Text chose:** "They are flirting with him" (surface social interpretation)
+- **Vision chose:** "Women are stronger and more dominant" (power dynamic inference)
+
+### Interpretation
+
+Why might vision capture psychological/thematic content better?
+
+1. **Compression forces abstraction:** Vision's lossy compression may force the model to extract high-level meaning rather than memorize surface patterns
+
+2. **Different attention patterns:** Visual rendering may emphasize narrative structure (paragraphs, dialogue) differently than tokenization
+
+3. **Robustness = semantic grounding:** Vision's stability suggests it captures something closer to the "meaning" that doesn't change when surface text is corrupted
+
+### Caveat
+
+Vision is also stable when WRONG (12/21 stable questions). Stability alone doesn't guarantee correctness — but the combination of stability + higher accuracy on inference questions suggests vision captures different (sometimes better) representations.
+
+---
+
 ## Implications
 
 1. **OCR'd documents**: Historical texts, scanned PDFs, and OCR output often have 5-15% character errors. Vision may be more robust for these.

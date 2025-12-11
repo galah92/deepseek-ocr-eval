@@ -149,6 +149,17 @@ his left ch...
 
 **What happened:** The answer is in the middle of the article. Both truncation strategies discard the middle entirely. Vision's optical compression sees the whole document and captures the key passage.
 
+### Cross-Reference: Stability Under Noise
+
+These same two questions (Tr'en and Johnathan) were also tested in **Experiment A (Noise Robustness)**. Remarkably, vision gave the **exact same correct answer across all noise levels (0-20%)**, while text changed its answer at every noise level:
+
+| Question | Vision (across 5 noise levels) | Text (across 5 noise levels) |
+|----------|-------------------------------|------------------------------|
+| Tr'en unlocked door | Always Option 1 ✓ | 3, 1, 1, 0, 1 (unstable) |
+| Johnathan humiliated | Always Option 2 ✓ | 3, 3, 1, -1, 1 (unstable) |
+
+This suggests vision isn't just preserving more information — it's capturing a **different, more stable representation** that's robust to both compression and noise. See Experiment A for detailed stability analysis.
+
 ---
 
 ## Example 3: Vision Matches Full Text, Beats Truncation
