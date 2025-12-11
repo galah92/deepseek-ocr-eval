@@ -1,4 +1,4 @@
-# Concrete Examples: Vision Compression vs Text Truncation
+# Experiment D: Vision Compression vs Text Truncation
 
 ## Executive Summary
 
@@ -6,20 +6,75 @@ We tested whether vision-based compression (rendering text as images, ~400 token
 
 ---
 
-## The Setup
+## Background
 
-| Method | How it works | Token count |
-|--------|--------------|-------------|
-| **Full text** | Send entire article as text | ~6,000 tokens |
-| **Truncate-first** | Keep only first 400 tokens | 400 tokens |
-| **Truncate-last** | Keep only last 400 tokens | 400 tokens |
-| **Vision** | Render entire article as image → compress to ~400 vision tokens | 400 tokens |
+### What is DeepSeek-OCR?
 
-**The question:** At equal token budgets, can vision compression preserve information that truncation loses?
+[DeepSeek-OCR](https://github.com/deepseek-ai/DeepSeek-VL2) is a vision-language model that can encode images of text into a compressed token representation. Instead of tokenizing text character-by-character, it:
+
+1. **Renders** text as an image (like a screenshot of a document)
+2. **Encodes** the image using a vision transformer
+3. **Compresses** the visual representation into ~400 "vision tokens"
+
+This allows ~6,000 tokens of text to be represented in ~400 vision tokens — a 15x compression ratio.
+
+### The Research Question
+
+**Hypothesis:** Vision compression preserves information from the *entire* document, while truncation discards everything outside its window. For QA tasks where answers can appear anywhere in a document, vision should outperform truncation.
+
+**Why this matters:** LLMs have limited context windows. When documents exceed this limit, practitioners typically truncate. But truncation loses information. Vision compression might be a better alternative.
 
 ---
 
-## Example 1: Vision is the ONLY Method That Succeeds
+## Methodology
+
+### Dataset: QuALITY
+
+We use [QuALITY](https://github.com/nyu-mll/quality) (Question Answering with Long Input Texts, Yes!), a benchmark for long-document comprehension:
+
+- **Task:** 4-way multiple choice questions about long articles
+- **Article length:** ~5,000-7,000 tokens each (exceeds typical context windows)
+- **Question type:** Requires reading and understanding the full article
+- **Source:** Fiction and non-fiction from Project Gutenberg
+- **Key property:** Answers can appear anywhere in the document — beginning, middle, or end
+
+### Conditions Compared
+
+| Method | How it works | Token count |
+|--------|--------------|-------------|
+| **Full text** | Send entire article as text tokens | ~6,000 tokens |
+| **Truncate-first** | Keep only first 400 text tokens | 400 tokens |
+| **Truncate-last** | Keep only last 400 text tokens | 400 tokens |
+| **Vision** | Render entire article as image → compress to ~400 vision tokens | 400 tokens |
+
+### Evaluation Protocol
+
+For each article and question:
+
+1. **Full text:** Feed complete article (~6,000 tokens) to the model
+2. **Truncate-first:** Feed only the first 400 tokens of the article
+3. **Truncate-last:** Feed only the last 400 tokens of the article
+4. **Vision:** Render entire article as image → encode with DeepSeek-OCR (~400 vision tokens) → feed to model
+
+All conditions use the same underlying LLM (DeepSeek-VL2) to answer the multiple-choice question.
+
+### Metrics
+
+- **Accuracy:** % of questions answered correctly (random baseline = 25%)
+- **Efficiency:** Accuracy achieved relative to full-text baseline
+
+### Sample Size
+
+- 5 articles from QuALITY validation set
+- 5 questions per article
+- 4 conditions (full text, truncate-first, truncate-last, vision)
+- **Total:** 25 questions × 4 conditions = 100 evaluations
+
+---
+
+## Results
+
+### Example 1: Vision is the ONLY Method That Succeeds
 
 ### The Question
 ```

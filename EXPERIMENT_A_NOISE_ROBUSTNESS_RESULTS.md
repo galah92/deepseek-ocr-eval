@@ -1,4 +1,4 @@
-# Concrete Examples: Vision Tokens vs Text Under Noise
+# Experiment A: Noise Robustness — Vision Tokens vs Text Under Corruption
 
 ## Executive Summary
 
@@ -6,7 +6,78 @@ We tested whether vision-based context compression (rendering text as images) is
 
 ---
 
-## Example 1: Text Produces INVALID OUTPUT Under Noise
+## Background
+
+### What is DeepSeek-OCR?
+
+[DeepSeek-OCR](https://github.com/deepseek-ai/DeepSeek-VL2) is a vision-language model that can encode images of text into a compressed token representation. Instead of tokenizing text character-by-character, it:
+
+1. **Renders** text as an image (like a screenshot of a document)
+2. **Encodes** the image using a vision transformer
+3. **Compresses** the visual representation into ~400 "vision tokens"
+
+This allows ~6,000 tokens of text to be represented in ~400 vision tokens — a 15x compression ratio.
+
+### The Research Question
+
+**Hypothesis:** Vision encoders, trained on diverse image corruptions (blur, noise, compression artifacts), may be more robust to character-level text corruption than text tokenizers that expect clean input.
+
+**Why this matters:** Real-world text is often noisy — OCR errors, typos, historical documents, user-generated content. If vision is more robust, it could be preferable for these use cases.
+
+---
+
+## Methodology
+
+### Dataset: QuALITY
+
+We use [QuALITY](https://github.com/nyu-mll/quality) (Question Answering with Long Input Texts, Yes!), a benchmark for long-document comprehension:
+
+- **Task:** 4-way multiple choice questions about long articles
+- **Article length:** ~5,000-7,000 tokens each
+- **Question type:** Requires reading and understanding the full article
+- **Source:** Fiction and non-fiction from Project Gutenberg
+
+### Noise Injection: Keyboard Typos
+
+We simulate realistic typos by replacing characters with their keyboard neighbors:
+
+```
+Original:  "The vicious Oan who lived in the cliffs"
+5% typos:  "The vicikus Oan who livwd in the cliffs"
+10% typos: "Thr vicioua Oan wno ljvrd in the clifts"
+15% typos: "Thr vicioya Iqn wno ljvtd ih the dlifts"
+```
+
+- Only alphabetic characters are corrupted (punctuation/spaces preserved)
+- Each corrupted character is replaced with an adjacent key (e.g., 'e' → 'd', 's', 'w', or 'r')
+- Noise levels tested: 0%, 5%, 10%, 15%, 20%
+
+### Evaluation Protocol
+
+For each article and noise level:
+
+1. **Text condition:** Feed corrupted text directly to the model as tokens
+2. **Vision condition:** Render corrupted text as an image → encode with DeepSeek-OCR → feed vision tokens to model
+
+Both conditions use the same underlying LLM (DeepSeek-VL2) to answer the multiple-choice question.
+
+### Metrics
+
+- **Accuracy:** % of questions answered correctly (random baseline = 25%)
+- **Parse failure (-1):** Model couldn't produce a valid answer option
+
+### Sample Size
+
+- 5 articles from QuALITY validation set
+- 5 questions per article
+- 5 noise levels
+- **Total:** 25 questions × 5 noise levels = 125 evaluations
+
+---
+
+## Results
+
+### Example 1: Text Produces INVALID OUTPUT Under Noise
 
 ### The Question
 ```
