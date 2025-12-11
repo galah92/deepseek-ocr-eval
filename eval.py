@@ -335,7 +335,7 @@ def render_augmented_text_to_image(
             continue
 
         x = padding
-        for word, start, end in line_words:
+        for word, start, _end in line_words:
             # Determine color for this word (use first char's highlight)
             color = char_colors.get(start, FG_COLOR)
             draw.text((x, y), word, font=FONT, fill=color)
@@ -898,7 +898,7 @@ def cmd_ocr(args: argparse.Namespace) -> None:
     ground_truth = None
     if args.ground_truth:
         if Path(args.ground_truth).is_file():
-            with open(args.ground_truth, "r", encoding="utf-8") as f:
+            with open(args.ground_truth, encoding="utf-8") as f:
                 ground_truth = f.read()
         else:
             ground_truth = args.ground_truth
@@ -1125,7 +1125,7 @@ def cmd_quality(args: argparse.Namespace) -> None:
     overflow_stats = {"vision_beat_text": 0, "text_beat_vision": 0, "total": 0}
     no_overflow_stats = {"vision_beat_text": 0, "text_beat_vision": 0, "total": 0}
 
-    for article_hash, article_data in results["articles"].items():
+    for _article_hash, article_data in results["articles"].items():
         target = (
             overflow_stats
             if article_data["exceeds_context_limit"]
@@ -1202,11 +1202,7 @@ def truncate_text(
     if len(tokens) <= max_tokens:
         return text
 
-    if from_end:
-        truncated_tokens = tokens[-max_tokens:]
-    else:
-        truncated_tokens = tokens[:max_tokens]
-
+    truncated_tokens = tokens[-max_tokens:] if from_end else tokens[:max_tokens]
     return tokenizer.decode(truncated_tokens)
 
 
@@ -2284,7 +2280,7 @@ def cmd_omnidocbench(args: argparse.Namespace) -> None:
 
     # 2. Load Annotations
     logger.info("Loading OmniDocBench annotations...")
-    with open(json_path, "r") as f:
+    with open(json_path) as f:
         dataset = json.load(f)
 
     # 3. Filter/Select Items
@@ -2443,7 +2439,7 @@ def cmd_reproduce(args: argparse.Namespace) -> None:
         result_file = results_dir / f"omnidocbench_{mode}_{num_docs_omni}docs.json"
 
         if result_file.exists():
-            with open(result_file, "r") as f:
+            with open(result_file) as f:
                 data = json.load(f)
                 summary_results["omnidocbench"][mode] = data["summary"]
 
@@ -2473,7 +2469,7 @@ def cmd_reproduce(args: argparse.Namespace) -> None:
         )
 
         if result_file.exists():
-            with open(result_file, "r") as f:
+            with open(result_file) as f:
                 data = json.load(f)
                 summary_results["quality"][mode] = data["summary"]
 
@@ -2504,7 +2500,7 @@ def cmd_reproduce(args: argparse.Namespace) -> None:
         )
 
         if result_file.exists():
-            with open(result_file, "r") as f:
+            with open(result_file) as f:
                 data = json.load(f)
                 summary_results["finewiki"][mode] = data["summary"]
 

@@ -26,3 +26,23 @@ dev = [
     "ruff>=0.14.8",
     "ty>=0.0.1a33",
 ]
+
+[tool.ruff.lint]
+select = [
+    # pycodestyle
+    "E",
+    # Pyflakes
+    "F",
+    # pyupgrade
+    "UP",
+    # flake8-bugbear
+    "B",
+    # flake8-simplify
+    "SIM",
+    # isort
+    "I",
+]
+ignore = [
+    # Line too long - handled by formatter
+    "E501",
+]
