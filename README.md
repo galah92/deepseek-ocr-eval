@@ -144,18 +144,26 @@ Our experimental findings **partially confirm but also challenge** Lee et al.'s 
 | Vision doesn't beat text for LM tasks | QuALITY: Text 36% vs Vision 34% (large mode) | **Confirmed** — text wins, though margin is small |
 | Vision doesn't beat truncation | **Experiment D: Vision 44% vs Truncation 28-36%** | **REFUTED for QA** — vision beats truncation by 8-16 points |
 | Vision not robust to noise | **Experiment A: Vision 93% vs Text 60% under typo noise** | **REFUTED** — vision MORE robust than text |
+| Vision preserves 2D structure | **Experiment B: Vision 35% = Linearized 35%** | **NOT confirmed** — no advantage for cell-lookup |
+| Visual formatting helps | **Experiment C: Plain 33% = Augmented 33%** | **NOT confirmed** — color highlighting has no effect |
 | Compression comes at accuracy cost | Tiny mode: 38x compression but only 26% accuracy | **Confirmed** — severe trade-off at high compression |
-| Reconstruction ≠ downstream utility | FineWiki: Higher word overlap for vision, but likely due to OCR+paraphrase, not comprehension | **Plausible** — our metric may be flawed |
 
-**What we did NOT test (remaining gaps):**
-- We didn't compare against mean pooling or hierarchical encoder baselines
-- We used DeepSeek-OCR's model, not independent vision encoders
+**Summary of Experiments:**
 
-**Where our results diverge from Lee et al.:**
-- **Vision BEATS truncation for QA tasks** (44% vs 28-36% at 400 tokens) — the opposite of their LM result
-- **Vision MORE ROBUST under noise** (93% vs 60% at 0-15% typos) — text tokenizer fails where vision succeeds
-- **Task-specificity matters:** Their conclusion holds for recency-dependent tasks but fails for coverage-dependent tasks
-- At 15x compression (400 vision tokens vs ~6,400 text tokens), vision achieves **100% of full-text accuracy** (44% vs 44%)
+| Exp | Hypothesis | Result | Verdict |
+|-----|------------|--------|---------|
+| A | Vision robust to noise | Vision 93% vs Text 60% | ✓ Supported |
+| B | Vision preserves 2D structure | Vision = Linearized (35%) | ✗ Not supported |
+| C | Visual formatting helps | Plain = Augmented (33%) | ✗ Not supported |
+| D | Vision beats truncation | Vision 44% vs Trunc 28-36% | ✓ Supported |
+
+**Where vision wins:**
+- Coverage-dependent QA tasks (vs truncation)
+- Noisy/degraded text input
+
+**Where vision doesn't help:**
+- Cell-lookup in tables (counting rows/columns)
+- Semantic color highlighting (not trained for it)
 
 ### Research Gap: What Lee et al. Didn't Test
 
