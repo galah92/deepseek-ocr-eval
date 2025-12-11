@@ -234,17 +234,40 @@ uv run python eval.py noise --noise-type typos --mode large --num-articles 3 --q
 uv run python eval.py tables --mode large --num-tables 15
 ```
 
-#### Experiment C: Augmented Rendering (Visual Metadata Injection)
+#### Experiment C: Augmented Rendering (Visual Metadata Injection) — **COMPLETED**
 
 **Gap addressed:** Lee et al. treated vision as pure compression. Vision can carry **additional** signal.
+
+**Results** (3 articles, 9 questions from QuALITY):
+
+| Condition | Accuracy | Correct |
+|-----------|----------|---------|
+| Plain Vision | 33.3% | 3/9 |
+| Augmented Vision | 33.3% | 3/9 |
+| Text Only | 22.2% | 2/9 |
+
+**Key Findings:**
+1. **No difference between plain and augmented rendering** — semantic highlighting (colors for entities, numbers, quotes) did not improve accuracy
+2. **Vision outperforms text-only** (33.3% vs 22.2%) — confirms vision modality advantage
+3. **Hypothesis NOT supported** — simple color-based highlighting doesn't help; model may not attend to color cues
+
+**Interpretation:** The DeepSeek-OCR model wasn't trained to leverage color semantics. Future work could explore:
+- Training-time augmentation with semantic colors
+- More salient visual cues (size, position, borders)
+- Task-specific highlighting (e.g., highlighting answer-relevant spans)
 
 *   **Hypothesis:** Visual formatting (bold, color, size) can encode semantic information (entity types, importance, relationships) that improves downstream tasks.
 *   **Method:**
     - Baseline: Plain text rendering (dark mode, monospace)
-    - Treatment: Semantic rendering (entities bolded, keywords highlighted, section headers enlarged)
-    - Task: QuALITY QA or entity-centric questions
+    - Treatment: Semantic rendering (entities colored: blue=entities, green=numbers, purple=quotes)
+    - Task: QuALITY QA
 *   **Success criterion:** Augmented rendering > plain rendering > text-only (at matched compression).
-*   **Contribution:** Novel demonstration that vision is not just compression but a **richer encoding channel**.
+*   **Result:** ✗ **NOT achieved** — augmented = plain > text-only
+
+```bash
+# Run augmented experiment
+uv run python eval.py augmented --mode large --num-articles 3 --questions-per-article 3
+```
 
 #### ~~Experiment D: Truncation Baseline~~ **COMPLETED** — See results above
 

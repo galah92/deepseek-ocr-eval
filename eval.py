@@ -1626,7 +1626,7 @@ def cmd_augmented(args: argparse.Namespace) -> None:
             plain_output, _, _ = run_inference(
                 plain_prompt, str(plain_img_path), mode=args.mode, model=model, tokenizer=tokenizer
             )
-            plain_answer = parse_qa_answer(plain_output)
+            plain_answer = next((int(c) for c in plain_output.strip() if c in "0123"), -1)
             plain_correct = plain_answer == correct
 
             # 2. Augmented vision
@@ -1634,7 +1634,7 @@ def cmd_augmented(args: argparse.Namespace) -> None:
             aug_output, _, _ = run_inference(
                 aug_prompt, str(augmented_img_path), mode=args.mode, model=model, tokenizer=tokenizer
             )
-            aug_answer = parse_qa_answer(aug_output)
+            aug_answer = next((int(c) for c in aug_output.strip() if c in "0123"), -1)
             aug_correct = aug_answer == correct
 
             # 3. Text-only baseline
@@ -1642,7 +1642,7 @@ def cmd_augmented(args: argparse.Namespace) -> None:
             text_output, _, _ = run_inference(
                 text_prompt, "", mode="text", model=model, tokenizer=tokenizer
             )
-            text_answer = parse_qa_answer(text_output)
+            text_answer = next((int(c) for c in text_output.strip() if c in "0123"), -1)
             text_correct = text_answer == correct
 
             # Log results
