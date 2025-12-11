@@ -229,12 +229,56 @@ The text tokenizer sees **broken tokens**. The vision encoder sees **slightly no
 
 ---
 
-## Statistical Caveats
+## Limitations and Weaknesses
 
-- Sample size: 25 questions per noise level (5 articles × 5 questions)
-- Single model tested: DeepSeek-OCR
-- Single noise type: Keyboard typos (other types like OCR errors, deletions may differ)
-- For publication: Would need larger N, multiple models, confidence intervals
+### Sample Size Limitations
+
+| Issue | Current State | Impact |
+|-------|---------------|--------|
+| **Small N** | 25 questions per noise level | Cannot compute meaningful confidence intervals |
+| **Few articles** | Only 5 articles tested | Results may not generalize to other document types |
+| **Single run** | No repeated trials | Cannot measure variance or statistical significance |
+
+**For publication:** Would need 100+ questions, 3+ runs, and proper statistical tests (e.g., McNemar's test for paired comparisons).
+
+### Model Limitations
+
+- **Single model tested:** Only DeepSeek-OCR (DeepSeek-VL2 backbone)
+- **No comparison models:** Did not test other vision-language models (Qwen-VL, LLaVA, GPT-4V)
+- **Model-specific artifacts:** Results may reflect DeepSeek-OCR's training, not general vision vs text properties
+
+### Noise Type Limitations
+
+- **Only keyboard typos tested:** Real-world noise includes OCR errors, deletions, insertions, Unicode issues
+- **Uniform noise distribution:** Applied noise uniformly; real typos cluster in certain words
+- **Synthetic noise:** May not reflect actual OCR error patterns or human typing errors
+- **English only:** Did not test other languages where character corruption may have different effects
+
+### Dataset Limitations
+
+- **Single dataset:** Only QuALITY (long-form fiction/non-fiction)
+- **Literary text bias:** Project Gutenberg sources may not represent technical documents, web content, or conversational text
+- **Multiple choice format:** Results may differ for extractive QA or free-form generation tasks
+
+### Methodological Limitations
+
+- **No error analysis:** Did not manually inspect why specific questions failed
+- **No ablations:** Did not test different vision resolutions, font sizes, or rendering parameters
+- **Tokenizer confound:** Text failures at high noise could be tokenizer-specific, not fundamental to text representation
+
+### What We Cannot Claim
+
+Based on these limitations, we **cannot** claim:
+- Vision is universally more robust than text (only tested one model, one noise type)
+- The 5% crossover point generalizes (may vary by model, document type, noise type)
+- Vision should replace text for noisy input (need cost/latency analysis)
+
+### What We Can Claim
+
+We **can** claim:
+- In this specific setup (DeepSeek-OCR, QuALITY, keyboard typos), vision maintained accuracy while text degraded
+- Text tokenization produced parse failures at 10-15% noise; vision did not
+- This motivates further investigation with larger scale and more diverse conditions
 
 ---
 

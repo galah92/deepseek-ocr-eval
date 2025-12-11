@@ -230,12 +230,67 @@ Vision (400 tokens):
 
 ---
 
-## Statistical Caveats
+## Limitations and Weaknesses
 
-- Sample size: 25 questions (5 articles × 5 questions)
-- Single model tested: DeepSeek-OCR
-- Single token budget: 400 tokens
-- For publication: Would need larger N, multiple token budgets, more diverse documents
+### Sample Size Limitations
+
+| Issue | Current State | Impact |
+|-------|---------------|--------|
+| **Small N** | 25 questions total | Cannot compute meaningful confidence intervals |
+| **Few articles** | Only 5 articles tested | Results may not generalize to other document types |
+| **Single run** | No repeated trials | Cannot measure variance or statistical significance |
+
+**For publication:** Would need 100+ questions, 3+ runs, and proper statistical tests (e.g., McNemar's test for paired comparisons).
+
+### Model Limitations
+
+- **Single model tested:** Only DeepSeek-OCR (DeepSeek-VL2 backbone)
+- **No comparison models:** Did not test other vision-language models (Qwen-VL, LLaVA, GPT-4V)
+- **Model-specific compression:** DeepSeek-OCR's vision encoder may have unique properties not shared by other models
+
+### Token Budget Limitations
+
+- **Single budget tested:** Only 400 tokens — results may differ at 200, 800, or 1600 tokens
+- **No budget sweep:** Did not test where vision advantage appears/disappears across budgets
+- **Approximate token count:** Vision tokens and text tokens may not be directly comparable in information density
+
+### Truncation Baseline Limitations
+
+- **Naive truncation only:** Did not compare to smarter baselines like:
+  - Sentence-boundary truncation
+  - Summarization-based compression
+  - Retrieval-augmented generation (RAG)
+  - Sliding window approaches
+- **No middle truncation:** Only tested first/last, not "keep middle" or "keep evenly spaced samples"
+
+### Dataset Limitations
+
+- **Single dataset:** Only QuALITY (long-form fiction/non-fiction)
+- **Literary text bias:** Project Gutenberg sources may not represent technical documents, legal text, or scientific papers
+- **Multiple choice format:** Results may differ for extractive QA or free-form generation tasks
+- **Question distribution:** Did not analyze whether questions systematically target beginning/middle/end of articles
+
+### Methodological Limitations
+
+- **No error analysis:** Did not manually inspect why specific questions failed
+- **No position analysis:** Did not systematically track where correct answers appear in documents
+- **Rendering parameters fixed:** Did not test different font sizes, page layouts, or image resolutions
+- **No latency/cost analysis:** Vision encoding adds computational overhead not measured here
+
+### What We Cannot Claim
+
+Based on these limitations, we **cannot** claim:
+- Vision compression is universally better than truncation (only tested one model, one budget)
+- Vision matches full-text for all document types (only tested literary fiction)
+- Vision is more efficient than smarter compression methods (only compared to naive truncation)
+- The 44% accuracy ceiling is meaningful (may reflect model limitations, not compression quality)
+
+### What We Can Claim
+
+We **can** claim:
+- In this specific setup (DeepSeek-OCR, QuALITY, 400 tokens), vision matched full-text accuracy while truncation lost 8-16 percentage points
+- Vision compression preserved information from middle-document locations that truncation discarded
+- This motivates further investigation comparing vision to more sophisticated compression methods
 
 ---
 
