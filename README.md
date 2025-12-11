@@ -332,11 +332,39 @@ uv run python eval.py reproduce [--fast]
 
 ---
 
+## Mechanistic Analysis: WHY Is Vision Robust?
+
+See `MECHANISTIC_HYPOTHESES.md` for full details.
+
+### Completed Experiments
+
+| Experiment | Result | Implication |
+|------------|--------|-------------|
+| **Char-level tokenization** | 0% improvement over BPE | BPE fragmentation is NOT the cause |
+| **Rendering ablations** | Font size/type = 50% accuracy spread | Shape recognition matters |
+| **Blur/JPEG degradation** | No accuracy loss | Vision robust to familiar corruptions |
+
+### Key Findings
+
+1. **BPE Fragmentation Hypothesis: REJECTED** — Char-level tokenization shows no improvement
+2. **Shape Recognition: SUPPORTED** — Font size (8pt=17%, 24pt=50%) directly impacts accuracy
+3. **Training Distribution: SUPPORTED** — Blur/JPEG don't hurt (familiar corruptions)
+
+### In Progress
+
+- **Word scrambling experiment** — Tests Cambridge University effect (middle letters scrambled)
+- Run with: `python eval.py word-scramble --num-articles 2 --questions-per-article 3`
+
+### Related Work
+
+- **Glyph** ([arXiv:2510.17800](https://arxiv.org/abs/2510.17800)) — Concurrent work showing 3-4x compression via visual-text encoding
+
 ## References
 
 - Wei et al. (2024). [DeepSeek-OCR: Contexts Optical Compression](https://arxiv.org/abs/2510.18234)
 - Lee et al. (2024). [Optical Context Compression Critique](https://arxiv.org/abs/2512.03643)
 - Pang et al. (2022). [QuALITY: Question Answering with Long Input Texts](https://arxiv.org/abs/2112.08608)
+- Cheng et al. (2025). [Glyph: Scaling Context Windows via Visual-Text Compression](https://arxiv.org/abs/2510.17800)
 
 ## Datasets
 
