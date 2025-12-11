@@ -1070,6 +1070,7 @@ def cmd_quality(args: argparse.Namespace) -> None:
                 model=model,
                 tokenizer=tokenizer,
             )
+            assert settings.tokens is not None  # All EXPERIMENT_MODES have tokens
             vision_tokens = settings.tokens + PROMPT_TOKEN_OVERHEAD
 
             # Parse answers
@@ -1248,6 +1249,7 @@ def cmd_truncation(args: argparse.Namespace) -> None:
     settings = MODE_SETTINGS[args.mode]
 
     # Token budget for truncation = vision tokens for this mode
+    assert settings.tokens is not None  # All EXPERIMENT_MODES have tokens
     token_budget = settings.tokens
     logger.info(
         f"Token budget for truncation: {token_budget} (matching {args.mode} mode vision tokens)"
@@ -2188,6 +2190,7 @@ def cmd_finewiki(args: argparse.Namespace) -> None:
             model=model,
             tokenizer=tokenizer,
         )
+        assert settings.tokens is not None  # All EXPERIMENT_MODES have tokens
         vision_tokens = settings.tokens + CONTINUATION_TOKEN_OVERHEAD
 
         # Compute overlap scores
