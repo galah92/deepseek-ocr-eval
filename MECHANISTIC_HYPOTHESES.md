@@ -8,6 +8,38 @@ We have evidence that vision tokens are more robust to character-level corruptio
 
 ---
 
+## Related Work
+
+### Glyph: Visual-Text Compression (Cheng et al., 2025)
+
+Concurrent work on **Glyph** ([arXiv:2510.17800](https://arxiv.org/abs/2510.17800)) demonstrates that rendering text as images and processing with VLMs achieves **3-4x token compression** while maintaining accuracy comparable to text-only LLMs on long-context benchmarks.
+
+**Key findings from Glyph:**
+- 3-4x compression with minimal accuracy loss
+- DPI 72 (smaller text) = best compression/accuracy tradeoff
+- "Fine-grained alphanumeric strings (e.g., UUIDs) remain difficult"
+- Built on GLM-4.1V-9B, similar architecture to DeepSeek-OCR
+
+**How our work complements Glyph:**
+
+| Aspect | Glyph | Our Work |
+|--------|-------|----------|
+| Focus | Context compression | Noise robustness |
+| Question | "How much can we compress?" | "Why is vision robust to corruption?" |
+| Noise testing | None | 0-30% character corruption |
+| Rendering ablations | DPI only | Font size, type, blur, JPEG |
+| Mechanistic analysis | Minimal | Hypothesis-driven experiments |
+
+Our work provides the **mechanistic understanding** of why visual-text encoding works, complementing Glyph's benchmark-focused evaluation.
+
+**Citation:**
+```
+Cheng, J., Liu, Y., Zhang, X., et al. (2025). Glyph: Scaling Context Windows
+via Visual-Text Compression. arXiv:2510.17800.
+```
+
+---
+
 ## The Two Pipelines
 
 ```
