@@ -4,6 +4,9 @@ import argparse
 import hashlib
 import json
 import logging
+import random
+import re
+import string
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -166,13 +169,11 @@ def render_text_to_image(
 
 # Semantic highlighting colors (dark mode friendly)
 HIGHLIGHT_COLORS = {
-    "entity": "#4FC3F7",      # Light blue for named entities
-    "number": "#81C784",      # Green for numbers/dates
-    "keyword": "#FFB74D",     # Orange for keywords
-    "quote": "#BA68C8",       # Purple for quoted text
+    "entity": "#4FC3F7",  # Light blue for named entities
+    "number": "#81C784",  # Green for numbers/dates
+    "keyword": "#FFB74D",  # Orange for keywords
+    "quote": "#BA68C8",  # Purple for quoted text
 }
-
-import re
 
 
 def identify_highlights(text: str) -> list[tuple[int, int, str]]:
@@ -183,7 +184,7 @@ def identify_highlights(text: str) -> list[tuple[int, int, str]]:
     highlights = []
 
     # Numbers and dates (years, quantities, percentages)
-    for match in re.finditer(r'\b\d+(?:,\d{3})*(?:\.\d+)?%?\b|\b\d{4}\b', text):
+    for match in re.finditer(r"\b\d+(?:,\d{3})*(?:\.\d+)?%?\b|\b\d{4}\b", text):
         highlights.append((match.start(), match.end(), "number"))
 
     # Quoted text
@@ -191,10 +192,71 @@ def identify_highlights(text: str) -> list[tuple[int, int, str]]:
         highlights.append((match.start(), match.end(), "quote"))
 
     # Capitalized words (likely proper nouns/entities) - not at sentence start
-    for match in re.finditer(r'(?<=[.!?]\s)[A-Z][a-z]+|(?<=\s)[A-Z][a-z]+(?:\s[A-Z][a-z]+)*', text):
+    for match in re.finditer(
+        r"(?<=[.!?]\s)[A-Z][a-z]+|(?<=\s)[A-Z][a-z]+(?:\s[A-Z][a-z]+)*", text
+    ):
         # Filter out common words
         word = match.group()
-        if word.lower() not in {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'was', 'are', 'were', 'been', 'be', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'shall', 'can', 'this', 'that', 'these', 'those', 'it', 'its', 'they', 'them', 'their', 'he', 'she', 'him', 'her', 'his', 'hers', 'we', 'us', 'our', 'you', 'your', 'i', 'me', 'my'}:
+        if word.lower() not in {
+            "the",
+            "a",
+            "an",
+            "and",
+            "or",
+            "but",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "of",
+            "with",
+            "by",
+            "is",
+            "was",
+            "are",
+            "were",
+            "been",
+            "be",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "must",
+            "shall",
+            "can",
+            "this",
+            "that",
+            "these",
+            "those",
+            "it",
+            "its",
+            "they",
+            "them",
+            "their",
+            "he",
+            "she",
+            "him",
+            "her",
+            "his",
+            "hers",
+            "we",
+            "us",
+            "our",
+            "you",
+            "your",
+            "i",
+            "me",
+            "my",
+        }:
             highlights.append((match.start(), match.end(), "entity"))
 
     return sorted(highlights, key=lambda x: x[0])
@@ -237,7 +299,7 @@ def render_augmented_text_to_image(
             continue
 
         words = []
-        for match in re.finditer(r'\S+', paragraph):
+        for match in re.finditer(r"\S+", paragraph):
             word_start = current_pos + match.start()
             word_end = current_pos + match.end()
             words.append((match.group(), word_start, word_end))
@@ -364,31 +426,57 @@ def calculate_edit_distance(output: str, ground_truth: str) -> dict[str, int | f
 # Noise Injection Functions (Experiment A: Robustness Boundary)
 # ============================================================================
 
-import random
-import string
-
 # Common OCR confusion pairs (visually similar characters)
 OCR_CONFUSIONS = {
-    'O': '0', '0': 'O',
-    'l': '1', '1': 'l',
-    'I': 'l', 'l': 'I',
-    'S': '5', '5': 'S',
-    'B': '8', '8': 'B',
-    'g': '9', '9': 'g',
-    'Z': '2', '2': 'Z',
-    'rn': 'm', 'm': 'rn',
-    'cl': 'd', 'd': 'cl',
-    'vv': 'w', 'w': 'vv',
+    "O": "0",
+    "0": "O",
+    "l": "1",
+    "1": "l",
+    "I": "l",
+    "S": "5",
+    "5": "S",
+    "B": "8",
+    "8": "B",
+    "g": "9",
+    "9": "g",
+    "Z": "2",
+    "2": "Z",
+    "rn": "m",
+    "m": "rn",
+    "cl": "d",
+    "d": "cl",
+    "vv": "w",
+    "w": "vv",
 }
 
 # Keyboard proximity for typo simulation (QWERTY layout)
 KEYBOARD_NEIGHBORS = {
-    'a': 'sqwz', 'b': 'vghn', 'c': 'xdfv', 'd': 'sfecx', 'e': 'wrsdf',
-    'f': 'dgrtcv', 'g': 'fhtybn', 'h': 'gjuynm', 'i': 'uojk', 'j': 'hkunim',
-    'k': 'jlomi', 'l': 'kop', 'm': 'njk', 'n': 'bhjm', 'o': 'iplk',
-    'p': 'ol', 'q': 'wa', 'r': 'etdf', 's': 'awedxz', 't': 'rfyg',
-    'u': 'yihj', 'v': 'cfgb', 'w': 'qase', 'x': 'zsdc', 'y': 'tugh',
-    'z': 'asx',
+    "a": "sqwz",
+    "b": "vghn",
+    "c": "xdfv",
+    "d": "sfecx",
+    "e": "wrsdf",
+    "f": "dgrtcv",
+    "g": "fhtybn",
+    "h": "gjuynm",
+    "i": "uojk",
+    "j": "hkunim",
+    "k": "jlomi",
+    "l": "kop",
+    "m": "njk",
+    "n": "bhjm",
+    "o": "iplk",
+    "p": "ol",
+    "q": "wa",
+    "r": "etdf",
+    "s": "awedxz",
+    "t": "rfyg",
+    "u": "yihj",
+    "v": "cfgb",
+    "w": "qase",
+    "x": "zsdc",
+    "y": "tugh",
+    "z": "asx",
 }
 
 
@@ -414,8 +502,7 @@ def inject_typos(text: str, rate: float, seed: int = 42) -> str:
 
     # Randomly select indices to corrupt
     indices_to_corrupt = random.sample(
-        alpha_indices,
-        min(num_to_corrupt, len(alpha_indices))
+        alpha_indices, min(num_to_corrupt, len(alpha_indices))
     )
 
     for idx in indices_to_corrupt:
@@ -428,7 +515,7 @@ def inject_typos(text: str, rate: float, seed: int = 42) -> str:
                 replacement = replacement.upper()
             chars[idx] = replacement
 
-    return ''.join(chars)
+    return "".join(chars)
 
 
 def inject_ocr_errors(text: str, rate: float, seed: int = 42) -> str:
@@ -446,7 +533,7 @@ def inject_ocr_errors(text: str, rate: float, seed: int = 42) -> str:
 
     # First handle multi-character confusions
     result = text
-    for original, replacement in [('rn', 'm'), ('cl', 'd'), ('vv', 'w')]:
+    for original, replacement in [("rn", "m"), ("cl", "d"), ("vv", "w")]:
         if random.random() < rate:
             result = result.replace(original, replacement)
 
@@ -454,21 +541,19 @@ def inject_ocr_errors(text: str, rate: float, seed: int = 42) -> str:
     chars = list(result)
     single_confusions = {k: v for k, v in OCR_CONFUSIONS.items() if len(k) == 1}
 
-    eligible_indices = [
-        i for i, c in enumerate(chars)
-        if c in single_confusions
-    ]
+    eligible_indices = [i for i, c in enumerate(chars) if c in single_confusions]
 
     num_to_corrupt = int(len(eligible_indices) * rate)
-    indices_to_corrupt = random.sample(
-        eligible_indices,
-        min(num_to_corrupt, len(eligible_indices))
-    ) if eligible_indices else []
+    indices_to_corrupt = (
+        random.sample(eligible_indices, min(num_to_corrupt, len(eligible_indices)))
+        if eligible_indices
+        else []
+    )
 
     for idx in indices_to_corrupt:
         chars[idx] = single_confusions[chars[idx]]
 
-    return ''.join(chars)
+    return "".join(chars)
 
 
 def inject_deletions(text: str, rate: float, seed: int = 42) -> str:
@@ -487,16 +572,15 @@ def inject_deletions(text: str, rate: float, seed: int = 42) -> str:
     num_to_delete = int(len(chars) * rate)
 
     # Don't delete spaces to preserve word boundaries
-    non_space_indices = [i for i, c in enumerate(chars) if c != ' ']
+    non_space_indices = [i for i, c in enumerate(chars) if c != " "]
     if not non_space_indices:
         return text
 
-    indices_to_delete = set(random.sample(
-        non_space_indices,
-        min(num_to_delete, len(non_space_indices))
-    ))
+    indices_to_delete = set(
+        random.sample(non_space_indices, min(num_to_delete, len(non_space_indices)))
+    )
 
-    return ''.join(c for i, c in enumerate(chars) if i not in indices_to_delete)
+    return "".join(c for i, c in enumerate(chars) if i not in indices_to_delete)
 
 
 def inject_insertions(text: str, rate: float, seed: int = 42) -> str:
@@ -520,15 +604,10 @@ def inject_insertions(text: str, rate: float, seed: int = 42) -> str:
         char = random.choice(string.ascii_lowercase)
         chars.insert(pos, char)
 
-    return ''.join(chars)
+    return "".join(chars)
 
 
-def inject_noise(
-    text: str,
-    noise_type: str,
-    rate: float,
-    seed: int = 42
-) -> str:
+def inject_noise(text: str, noise_type: str, rate: float, seed: int = 42) -> str:
     """Apply noise injection to text.
 
     Args:
@@ -543,15 +622,15 @@ def inject_noise(
     if rate <= 0:
         return text
 
-    if noise_type == 'typos':
+    if noise_type == "typos":
         return inject_typos(text, rate, seed)
-    elif noise_type == 'ocr':
+    elif noise_type == "ocr":
         return inject_ocr_errors(text, rate, seed)
-    elif noise_type == 'deletions':
+    elif noise_type == "deletions":
         return inject_deletions(text, rate, seed)
-    elif noise_type == 'insertions':
+    elif noise_type == "insertions":
         return inject_insertions(text, rate, seed)
-    elif noise_type == 'mixed':
+    elif noise_type == "mixed":
         # Apply a mix of all noise types at reduced rates
         result = text
         sub_rate = rate / 4
@@ -587,7 +666,9 @@ def table_to_markdown(header: list[str], rows: list[list[str]]) -> str:
     # Build markdown table
     lines = []
     # Header
-    header_line = "| " + " | ".join(h.ljust(col_widths[i]) for i, h in enumerate(header)) + " |"
+    header_line = (
+        "| " + " | ".join(h.ljust(col_widths[i]) for i, h in enumerate(header)) + " |"
+    )
     lines.append(header_line)
     # Separator
     sep_line = "|" + "|".join("-" * (w + 2) for w in col_widths) + "|"
@@ -614,9 +695,9 @@ def table_to_linearized(header: list[str], rows: list[list[str]]) -> str:
     for i, row in enumerate(rows):
         cells = []
         for j, cell in enumerate(row):
-            col_name = header[j] if j < len(header) else f"Col{j+1}"
+            col_name = header[j] if j < len(header) else f"Col{j + 1}"
             cells.append(f"{col_name}={cell}")
-        lines.append(f"Row {i+1}: " + ", ".join(cells))
+        lines.append(f"Row {i + 1}: " + ", ".join(cells))
     return "\n".join(lines)
 
 
@@ -691,9 +772,9 @@ def normalize_answer(answer: str) -> str:
     """Normalize answer for comparison (lowercase, strip, handle common variations)."""
     s = answer.lower().strip()
     # Remove common punctuation
-    s = s.rstrip('.')
+    s = s.rstrip(".")
     # Handle numeric variations
-    s = s.replace(',', '')
+    s = s.replace(",", "")
     return s
 
 
@@ -702,8 +783,8 @@ def answers_match(predicted: str, gold_answers: list[str]) -> bool:
     pred_norm = normalize_answer(predicted)
 
     # Handle boolean answers specially
-    boolean_true = {'true', 'yes', '1', 'correct', 'right'}
-    boolean_false = {'false', 'no', '0', 'incorrect', 'wrong', 'none'}
+    boolean_true = {"true", "yes", "1", "correct", "right"}
+    boolean_false = {"false", "no", "0", "incorrect", "wrong", "none"}
 
     for gold in gold_answers:
         gold_norm = normalize_answer(gold)
@@ -791,6 +872,7 @@ def run_inference(
 
     # Clear CUDA cache to prevent OOM in long-running experiments
     import torch
+
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
@@ -1090,7 +1172,9 @@ def cmd_quality(args: argparse.Namespace) -> None:
     )
 
 
-def truncate_text(text: str, tokenizer: AutoTokenizer, max_tokens: int, from_end: bool = False) -> str:
+def truncate_text(
+    text: str, tokenizer: AutoTokenizer, max_tokens: int, from_end: bool = False
+) -> str:
     """Truncate text to max_tokens, either from beginning or end.
 
     Args:
@@ -1157,9 +1241,16 @@ def cmd_truncation(args: argparse.Namespace) -> None:
 
     # Token budget for truncation = vision tokens for this mode
     token_budget = settings.tokens
-    logger.info(f"Token budget for truncation: {token_budget} (matching {args.mode} mode vision tokens)")
+    logger.info(
+        f"Token budget for truncation: {token_budget} (matching {args.mode} mode vision tokens)"
+    )
 
-    results = {"mode": args.mode, "token_budget": token_budget, "articles": {}, "summary": {}}
+    results = {
+        "mode": args.mode,
+        "token_budget": token_budget,
+        "articles": {},
+        "summary": {},
+    }
     stats = {
         "full_text_correct": 0,
         "trunc_first_correct": 0,
@@ -1168,7 +1259,9 @@ def cmd_truncation(args: argparse.Namespace) -> None:
         "total": 0,
     }
 
-    logger.info(f"TRUNCATION EXPERIMENT: Mode={args.mode}, Articles={args.num_articles}, Token Budget={token_budget}")
+    logger.info(
+        f"TRUNCATION EXPERIMENT: Mode={args.mode}, Articles={args.num_articles}, Token Budget={token_budget}"
+    )
 
     for article_hash, article_data in article_items:
         article = article_data["article"]
@@ -1188,7 +1281,9 @@ def cmd_truncation(args: argparse.Namespace) -> None:
         trunc_first = truncate_text(article, tokenizer, token_budget, from_end=False)
         trunc_last = truncate_text(article, tokenizer, token_budget, from_end=True)
 
-        trunc_first_tokens = len(tokenizer.encode(trunc_first, add_special_tokens=False))
+        trunc_first_tokens = len(
+            tokenizer.encode(trunc_first, add_special_tokens=False)
+        )
         trunc_last_tokens = len(tokenizer.encode(trunc_last, add_special_tokens=False))
 
         logger.info(f"  Article tokens: {article_tokens}")
@@ -1224,7 +1319,9 @@ def cmd_truncation(args: argparse.Namespace) -> None:
             trunc_first_output, _, _ = run_inference(
                 trunc_first_prompt, "", mode="text", model=model, tokenizer=tokenizer
             )
-            trunc_first_pred = next((int(c) for c in trunc_first_output.strip() if c in "0123"), -1)
+            trunc_first_pred = next(
+                (int(c) for c in trunc_first_output.strip() if c in "0123"), -1
+            )
             trunc_first_correct = trunc_first_pred == expected
 
             # Condition 3: Truncated last N tokens
@@ -1232,15 +1329,23 @@ def cmd_truncation(args: argparse.Namespace) -> None:
             trunc_last_output, _, _ = run_inference(
                 trunc_last_prompt, "", mode="text", model=model, tokenizer=tokenizer
             )
-            trunc_last_pred = next((int(c) for c in trunc_last_output.strip() if c in "0123"), -1)
+            trunc_last_pred = next(
+                (int(c) for c in trunc_last_output.strip() if c in "0123"), -1
+            )
             trunc_last_correct = trunc_last_pred == expected
 
             # Condition 4: Vision (full article rendered)
             vision_prompt = f"<image>{question_suffix}"
             vision_output, _, _ = run_inference(
-                vision_prompt, str(img_path), mode=args.mode, model=model, tokenizer=tokenizer
+                vision_prompt,
+                str(img_path),
+                mode=args.mode,
+                model=model,
+                tokenizer=tokenizer,
             )
-            vision_pred = next((int(c) for c in vision_output.strip() if c in "0123"), -1)
+            vision_pred = next(
+                (int(c) for c in vision_output.strip() if c in "0123"), -1
+            )
             vision_correct = vision_pred == expected
 
             logger.info(f"  Q: {question[:50]}...")
@@ -1252,18 +1357,20 @@ def cmd_truncation(args: argparse.Namespace) -> None:
             )
 
             # Store results
-            article_results["questions"].append({
-                "question": question[:100],
-                "expected": expected,
-                "full_pred": full_pred,
-                "trunc_first_pred": trunc_first_pred,
-                "trunc_last_pred": trunc_last_pred,
-                "vision_pred": vision_pred,
-                "full_correct": full_correct,
-                "trunc_first_correct": trunc_first_correct,
-                "trunc_last_correct": trunc_last_correct,
-                "vision_correct": vision_correct,
-            })
+            article_results["questions"].append(
+                {
+                    "question": question[:100],
+                    "expected": expected,
+                    "full_pred": full_pred,
+                    "trunc_first_pred": trunc_first_pred,
+                    "trunc_last_pred": trunc_last_pred,
+                    "vision_pred": vision_pred,
+                    "full_correct": full_correct,
+                    "trunc_first_correct": trunc_first_correct,
+                    "trunc_last_correct": trunc_last_correct,
+                    "vision_correct": vision_correct,
+                }
+            )
 
             # Update counts
             if full_correct:
@@ -1299,7 +1406,8 @@ def cmd_truncation(args: argparse.Namespace) -> None:
             "vision_accuracy": vision_acc,
             "vision_beats_trunc_first": vision_acc > trunc_first_acc,
             "vision_beats_trunc_last": vision_acc > trunc_last_acc,
-            "vision_beats_both_truncations": vision_acc > max(trunc_first_acc, trunc_last_acc),
+            "vision_beats_both_truncations": vision_acc
+            > max(trunc_first_acc, trunc_last_acc),
         }
 
         logger.info("\n" + "=" * 60)
@@ -1310,16 +1418,26 @@ def cmd_truncation(args: argparse.Namespace) -> None:
         logger.info("")
         logger.info(f"{'Condition':<20} | {'Accuracy':<10} | {'Correct':<10}")
         logger.info("-" * 45)
-        logger.info(f"{'Full text':<20} | {full_acc:>8}% | {stats['full_text_correct']}/{n}")
-        logger.info(f"{'Trunc (first N)':<20} | {trunc_first_acc:>8}% | {stats['trunc_first_correct']}/{n}")
-        logger.info(f"{'Trunc (last N)':<20} | {trunc_last_acc:>8}% | {stats['trunc_last_correct']}/{n}")
-        logger.info(f"{'Vision':<20} | {vision_acc:>8}% | {stats['vision_correct']}/{n}")
+        logger.info(
+            f"{'Full text':<20} | {full_acc:>8}% | {stats['full_text_correct']}/{n}"
+        )
+        logger.info(
+            f"{'Trunc (first N)':<20} | {trunc_first_acc:>8}% | {stats['trunc_first_correct']}/{n}"
+        )
+        logger.info(
+            f"{'Trunc (last N)':<20} | {trunc_last_acc:>8}% | {stats['trunc_last_correct']}/{n}"
+        )
+        logger.info(
+            f"{'Vision':<20} | {vision_acc:>8}% | {stats['vision_correct']}/{n}"
+        )
         logger.info("")
         logger.info(f"Vision beats truncation (first): {vision_acc > trunc_first_acc}")
         logger.info(f"Vision beats truncation (last): {vision_acc > trunc_last_acc}")
 
         save_experiment_results(
-            results, results_dir, f"truncation_{args.mode}_{args.num_articles}articles.json"
+            results,
+            results_dir,
+            f"truncation_{args.mode}_{args.num_articles}articles.json",
         )
 
 
@@ -1356,7 +1474,6 @@ def cmd_noise(args: argparse.Namespace) -> None:
     article_items = list(articles.items())[: args.num_articles]
 
     model, tokenizer = load_model()
-    settings = MODE_SETTINGS[args.mode]
 
     # Parse noise levels
     noise_levels = [float(x) for x in args.noise_levels.split(",")]
@@ -1377,7 +1494,9 @@ def cmd_noise(args: argparse.Namespace) -> None:
 
     logger.info(f"NOISE EXPERIMENT: Mode={args.mode}, Type={args.noise_type}")
     logger.info(f"Noise levels: {noise_levels}")
-    logger.info(f"Articles: {args.num_articles}, Questions/article: {args.questions_per_article}")
+    logger.info(
+        f"Articles: {args.num_articles}, Questions/article: {args.questions_per_article}"
+    )
 
     for article_hash, article_data in article_items:
         article = article_data["article"]
@@ -1406,19 +1525,23 @@ def cmd_noise(args: argparse.Namespace) -> None:
                     article,
                     args.noise_type,
                     level,
-                    seed=42 + int(level * 1000)  # Different seed per level
+                    seed=42 + int(level * 1000),  # Different seed per level
                 )
 
                 # Also apply noise to question if specified
                 if args.noise_question:
-                    noisy_question = inject_noise(question, args.noise_type, level, seed=43)
-                    noisy_options = inject_noise(options_text, args.noise_type, level, seed=44)
+                    noisy_question = inject_noise(
+                        question, args.noise_type, level, seed=43
+                    )
+                    noisy_options = inject_noise(
+                        options_text, args.noise_type, level, seed=44
+                    )
                 else:
                     noisy_question = question
                     noisy_options = options_text
 
                 # Render noisy article to image
-                img_path = data_dir / f"{article_hash}_noise{int(level*100)}.png"
+                img_path = data_dir / f"{article_hash}_noise{int(level * 100)}.png"
                 if not img_path.exists():
                     render_text_to_image(noisy_article, str(img_path))
 
@@ -1443,13 +1566,17 @@ def cmd_noise(args: argparse.Namespace) -> None:
                 )
 
                 # Parse answers
-                text_pred = next((int(c) for c in text_output.strip() if c in "0123"), -1)
-                vision_pred = next((int(c) for c in vision_output.strip() if c in "0123"), -1)
+                text_pred = next(
+                    (int(c) for c in text_output.strip() if c in "0123"), -1
+                )
+                vision_pred = next(
+                    (int(c) for c in vision_output.strip() if c in "0123"), -1
+                )
 
                 text_correct = text_pred == expected
                 vision_correct = vision_pred == expected
 
-                level_str = f"{int(level*100)}%"
+                level_str = f"{int(level * 100)}%"
                 logger.info(
                     f"  [{level_str:>3}] Q: {question[:40]}... | "
                     f"Text: {text_pred} {'✓' if text_correct else '✗'} | "
@@ -1499,7 +1626,9 @@ def cmd_noise(args: argparse.Namespace) -> None:
     logger.info(f"Noise type: {args.noise_type}")
     logger.info(f"Total questions per level: {level_stats[noise_levels[0]]['total']}")
     logger.info("")
-    logger.info(f"{'Noise Level':<12} | {'Text Acc':<10} | {'Vision Acc':<10} | {'Δ (V-T)':<10}")
+    logger.info(
+        f"{'Noise Level':<12} | {'Text Acc':<10} | {'Vision Acc':<10} | {'Δ (V-T)':<10}"
+    )
     logger.info("-" * 50)
 
     for level in noise_levels:
@@ -1507,14 +1636,16 @@ def cmd_noise(args: argparse.Namespace) -> None:
         text_acc = stats.get("text_accuracy", 0)
         vision_acc = stats.get("vision_accuracy", 0)
         delta = stats.get("vision_advantage", 0)
-        level_str = f"{int(level*100)}%"
+        level_str = f"{int(level * 100)}%"
         delta_str = f"+{delta}" if delta > 0 else str(delta)
-        logger.info(f"{level_str:<12} | {text_acc:>8}% | {vision_acc:>8}% | {delta_str:>8}")
+        logger.info(
+            f"{level_str:<12} | {text_acc:>8}% | {vision_acc:>8}% | {delta_str:>8}"
+        )
 
     # Determine crossover point (if any)
     crossover = None
     for i, level in enumerate(noise_levels[1:], 1):
-        prev_level = noise_levels[i-1]
+        prev_level = noise_levels[i - 1]
         prev_delta = summary_by_level.get(prev_level, {}).get("vision_advantage", 0)
         curr_delta = summary_by_level.get(level, {}).get("vision_advantage", 0)
         if prev_delta <= 0 and curr_delta > 0:
@@ -1522,17 +1653,26 @@ def cmd_noise(args: argparse.Namespace) -> None:
             break
 
     if crossover:
-        logger.info(f"\nCrossover point: Vision overtakes text at {int(crossover*100)}% noise")
+        logger.info(
+            f"\nCrossover point: Vision overtakes text at {int(crossover * 100)}% noise"
+        )
     else:
         # Check if vision always wins or always loses
-        all_deltas = [summary_by_level.get(l, {}).get("vision_advantage", 0) for l in noise_levels]
+        all_deltas = [
+            summary_by_level.get(lvl, {}).get("vision_advantage", 0)
+            for lvl in noise_levels
+        ]
         if all(d > 0 for d in all_deltas):
             logger.info("\nVision outperforms text at ALL noise levels")
         elif all(d <= 0 for d in all_deltas):
-            logger.info("\nText outperforms vision at ALL noise levels (no crossover found)")
+            logger.info(
+                "\nText outperforms vision at ALL noise levels (no crossover found)"
+            )
 
     save_experiment_results(
-        results, results_dir, f"noise_{args.noise_type}_{args.mode}_{args.num_articles}articles.json"
+        results,
+        results_dir,
+        f"noise_{args.noise_type}_{args.mode}_{args.num_articles}articles.json",
     )
 
 
@@ -1561,11 +1701,15 @@ def cmd_augmented(args: argparse.Namespace) -> None:
         article_hash = hashlib.md5(item["article"][:100].encode()).hexdigest()[:8]
         if article_hash not in articles_dict:
             articles_dict[article_hash] = {"article": item["article"], "questions": []}
-        articles_dict[article_hash]["questions"].append({
-            "question": item["question"],
-            "options": item["options"],
-            "gold_label": item["answer"],  # Note: QuALITY uses "answer" not "gold_label"
-        })
+        articles_dict[article_hash]["questions"].append(
+            {
+                "question": item["question"],
+                "options": item["options"],
+                "gold_label": item[
+                    "answer"
+                ],  # Note: QuALITY uses "answer" not "gold_label"
+            }
+        )
 
     # Filter for articles with enough questions
     articles = []
@@ -1576,7 +1720,6 @@ def cmd_augmented(args: argparse.Namespace) -> None:
             break
 
     model, tokenizer = load_model()
-    settings = MODE_SETTINGS[args.mode]
 
     results = {
         "mode": args.mode,
@@ -1592,7 +1735,9 @@ def cmd_augmented(args: argparse.Namespace) -> None:
     }
 
     logger.info(f"AUGMENTED RENDERING EXPERIMENT: Mode={args.mode}")
-    logger.info(f"Articles: {len(articles)}, Questions/article: {args.questions_per_article}")
+    logger.info(
+        f"Articles: {len(articles)}, Questions/article: {args.questions_per_article}"
+    )
     logger.info("=" * 70)
 
     for article_idx, item in enumerate(articles):
@@ -1624,15 +1769,25 @@ def cmd_augmented(args: argparse.Namespace) -> None:
             # 1. Plain vision
             plain_prompt = f"<image>{prompt_suffix}"
             plain_output, _, _ = run_inference(
-                plain_prompt, str(plain_img_path), mode=args.mode, model=model, tokenizer=tokenizer
+                plain_prompt,
+                str(plain_img_path),
+                mode=args.mode,
+                model=model,
+                tokenizer=tokenizer,
             )
-            plain_answer = next((int(c) for c in plain_output.strip() if c in "0123"), -1)
+            plain_answer = next(
+                (int(c) for c in plain_output.strip() if c in "0123"), -1
+            )
             plain_correct = plain_answer == correct
 
             # 2. Augmented vision
             aug_prompt = f"<image>{prompt_suffix}"
             aug_output, _, _ = run_inference(
-                aug_prompt, str(augmented_img_path), mode=args.mode, model=model, tokenizer=tokenizer
+                aug_prompt,
+                str(augmented_img_path),
+                mode=args.mode,
+                model=model,
+                tokenizer=tokenizer,
             )
             aug_answer = next((int(c) for c in aug_output.strip() if c in "0123"), -1)
             aug_correct = aug_answer == correct
@@ -1649,17 +1804,21 @@ def cmd_augmented(args: argparse.Namespace) -> None:
             p_mark = "✓" if plain_correct else "✗"
             a_mark = "✓" if aug_correct else "✗"
             t_mark = "✓" if text_correct else "✗"
-            logger.info(f"  Q{q_idx + 1}: Plain={plain_answer}{p_mark} Aug={aug_answer}{a_mark} Text={text_answer}{t_mark} (correct={correct})")
+            logger.info(
+                f"  Q{q_idx + 1}: Plain={plain_answer}{p_mark} Aug={aug_answer}{a_mark} Text={text_answer}{t_mark} (correct={correct})"
+            )
 
             stats["plain_correct"] += int(plain_correct)
             stats["augmented_correct"] += int(aug_correct)
             stats["text_correct"] += int(text_correct)
             stats["total"] += 1
 
-        results["articles"].append({
-            "hash": article_hash,
-            "questions": len(questions),
-        })
+        results["articles"].append(
+            {
+                "hash": article_hash,
+                "questions": len(questions),
+            }
+        )
 
     # Summary
     n = stats["total"]
@@ -1685,25 +1844,37 @@ def cmd_augmented(args: argparse.Namespace) -> None:
         logger.info("")
         logger.info(f"{'Condition':<20} | {'Accuracy':>10} | {'Correct':>10}")
         logger.info("-" * 50)
-        logger.info(f"{'Plain Vision':<20} | {plain_acc:>9.1f}% | {stats['plain_correct']:>5}/{n}")
-        logger.info(f"{'Augmented Vision':<20} | {aug_acc:>9.1f}% | {stats['augmented_correct']:>5}/{n}")
-        logger.info(f"{'Text Only':<20} | {text_acc:>9.1f}% | {stats['text_correct']:>5}/{n}")
+        logger.info(
+            f"{'Plain Vision':<20} | {plain_acc:>9.1f}% | {stats['plain_correct']:>5}/{n}"
+        )
+        logger.info(
+            f"{'Augmented Vision':<20} | {aug_acc:>9.1f}% | {stats['augmented_correct']:>5}/{n}"
+        )
+        logger.info(
+            f"{'Text Only':<20} | {text_acc:>9.1f}% | {stats['text_correct']:>5}/{n}"
+        )
         logger.info("")
 
         # Analysis
         if aug_acc > plain_acc:
-            logger.info(f"✓ Augmented rendering improves accuracy by +{aug_acc - plain_acc:.1f}%")
+            logger.info(
+                f"✓ Augmented rendering improves accuracy by +{aug_acc - plain_acc:.1f}%"
+            )
         elif aug_acc == plain_acc:
             logger.info("No difference between plain and augmented rendering")
         else:
-            logger.info(f"Plain rendering better than augmented by +{plain_acc - aug_acc:.1f}%")
+            logger.info(
+                f"Plain rendering better than augmented by +{plain_acc - aug_acc:.1f}%"
+            )
 
     save_experiment_results(
         results, results_dir, f"augmented_{args.mode}_{args.num_articles}articles.json"
     )
 
 
-def generate_cell_lookup_qa(header: list[str], rows: list[list[str]], seed: int = 42) -> tuple[str, str]:
+def generate_cell_lookup_qa(
+    header: list[str], rows: list[list[str]], seed: int = 42
+) -> tuple[str, str]:
     """Generate a cell lookup question that can be answered from visible data.
 
     Returns: (question, answer) tuple
@@ -1752,7 +1923,9 @@ def cmd_tables(args: argparse.Namespace) -> None:
 
         # Load the table sample
         try:
-            df = pd.read_parquet(f"hf://datasets/cardiffnlp/databench/data/{ds_id}/sample.parquet")
+            df = pd.read_parquet(
+                f"hf://datasets/cardiffnlp/databench/data/{ds_id}/sample.parquet"
+            )
             # Accept any table with 3-20 rows, 3-8 cols (sample size is 20 rows)
             if 3 <= len(df) <= 20 and 3 <= len(df.columns) <= 8:
                 # Convert all values to strings for rendering
@@ -1760,16 +1933,20 @@ def cmd_tables(args: argparse.Namespace) -> None:
                 header = list(df.columns)
 
                 # Generate cell lookup question
-                question, answer = generate_cell_lookup_qa(header, rows, seed=len(tables))
+                question, answer = generate_cell_lookup_qa(
+                    header, rows, seed=len(tables)
+                )
 
-                tables.append({
-                    "id": ds_id,
-                    "question": question,
-                    "answer": answer,
-                    "answer_type": "cell_lookup",
-                    "header": header,
-                    "rows": rows,
-                })
+                tables.append(
+                    {
+                        "id": ds_id,
+                        "question": question,
+                        "answer": answer,
+                        "answer_type": "cell_lookup",
+                        "header": header,
+                        "rows": rows,
+                    }
+                )
                 seen_datasets.add(ds_id)
         except Exception as e:
             logger.warning(f"Failed to load table {ds_id}: {e}")
@@ -1779,10 +1956,11 @@ def cmd_tables(args: argparse.Namespace) -> None:
             break
 
     if len(tables) < args.num_tables:
-        logger.warning(f"Only found {len(tables)} suitable tables (requested {args.num_tables})")
+        logger.warning(
+            f"Only found {len(tables)} suitable tables (requested {args.num_tables})"
+        )
 
     model, tokenizer = load_model()
-    settings = MODE_SETTINGS[args.mode]
 
     results = {
         "mode": args.mode,
@@ -1808,13 +1986,15 @@ def cmd_tables(args: argparse.Namespace) -> None:
         header = item["header"]
         rows = item["rows"]
 
-        logger.info(f"\nTable {i+1}/{len(tables)}: {table_id}")
+        logger.info(f"\nTable {i + 1}/{len(tables)}: {table_id}")
         logger.info(f"  Size: {len(rows)} rows × {len(header)} cols")
         logger.info(f"  Q: {question[:60]}...")
         logger.info(f"  Gold: {gold_answer}")
 
         # Create table hash for caching
-        table_hash = hashlib.md5(f"{table_id}_{len(rows)}_{len(header)}".encode()).hexdigest()[:8]
+        table_hash = hashlib.md5(
+            f"{table_id}_{len(rows)}_{len(header)}".encode()
+        ).hexdigest()[:8]
 
         # Render table to image
         img_path = data_dir / f"table_{table_hash}.png"
@@ -1831,7 +2011,11 @@ def cmd_tables(args: argparse.Namespace) -> None:
         # 1. Vision condition
         vision_prompt = f"<image>\nThis is a data table.{prompt_suffix}"
         vision_output, _, _ = run_inference(
-            vision_prompt, str(img_path), mode=args.mode, model=model, tokenizer=tokenizer
+            vision_prompt,
+            str(img_path),
+            mode=args.mode,
+            model=model,
+            tokenizer=tokenizer,
         )
         vision_correct = answers_match(vision_output.strip(), gold_answers)
 
@@ -1863,19 +2047,21 @@ def cmd_tables(args: argparse.Namespace) -> None:
         stats["linearized_correct"] += int(linearized_correct)
         stats["total"] += 1
 
-        results["tables"].append({
-            "id": table_id,
-            "question": question,
-            "gold_answer": gold_answer,
-            "rows": len(rows),
-            "cols": len(header),
-            "vision_output": vision_output.strip(),
-            "markdown_output": markdown_output.strip(),
-            "linearized_output": linearized_output.strip(),
-            "vision_correct": vision_correct,
-            "markdown_correct": markdown_correct,
-            "linearized_correct": linearized_correct,
-        })
+        results["tables"].append(
+            {
+                "id": table_id,
+                "question": question,
+                "gold_answer": gold_answer,
+                "rows": len(rows),
+                "cols": len(header),
+                "vision_output": vision_output.strip(),
+                "markdown_output": markdown_output.strip(),
+                "linearized_output": linearized_output.strip(),
+                "vision_correct": vision_correct,
+                "markdown_correct": markdown_correct,
+                "linearized_correct": linearized_correct,
+            }
+        )
 
     # Summary
     n = stats["total"]
@@ -1901,9 +2087,15 @@ def cmd_tables(args: argparse.Namespace) -> None:
         logger.info("")
         logger.info(f"{'Condition':<15} | {'Accuracy':>10} | {'Correct':>10}")
         logger.info("-" * 45)
-        logger.info(f"{'Vision':<15} | {vision_acc:>9.1f}% | {stats['vision_correct']:>5}/{n}")
-        logger.info(f"{'Markdown':<15} | {markdown_acc:>9.1f}% | {stats['markdown_correct']:>5}/{n}")
-        logger.info(f"{'Linearized':<15} | {linearized_acc:>9.1f}% | {stats['linearized_correct']:>5}/{n}")
+        logger.info(
+            f"{'Vision':<15} | {vision_acc:>9.1f}% | {stats['vision_correct']:>5}/{n}"
+        )
+        logger.info(
+            f"{'Markdown':<15} | {markdown_acc:>9.1f}% | {stats['markdown_correct']:>5}/{n}"
+        )
+        logger.info(
+            f"{'Linearized':<15} | {linearized_acc:>9.1f}% | {stats['linearized_correct']:>5}/{n}"
+        )
         logger.info("")
 
         # Analysis
@@ -2456,8 +2648,11 @@ def main() -> None:
         "truncation", help="Run truncation baseline experiment (Experiment D)"
     )
     trunc_parser.add_argument(
-        "--mode", type=str, default="large", choices=EXPERIMENT_MODES,
-        help="Vision mode (determines token budget for truncation)"
+        "--mode",
+        type=str,
+        default="large",
+        choices=EXPERIMENT_MODES,
+        help="Vision mode (determines token budget for truncation)",
     )
     trunc_parser.add_argument("--num-articles", type=int, default=5)
     trunc_parser.add_argument("--questions-per-article", type=int, default=5)
@@ -2467,23 +2662,31 @@ def main() -> None:
         "noise", help="Run noise injection experiment (Experiment A)"
     )
     noise_parser.add_argument(
-        "--mode", type=str, default="large", choices=EXPERIMENT_MODES,
-        help="Vision mode to use"
+        "--mode",
+        type=str,
+        default="large",
+        choices=EXPERIMENT_MODES,
+        help="Vision mode to use",
     )
     noise_parser.add_argument(
-        "--noise-type", type=str, default="typos",
+        "--noise-type",
+        type=str,
+        default="typos",
         choices=["typos", "ocr", "deletions", "insertions", "mixed"],
-        help="Type of noise to inject"
+        help="Type of noise to inject",
     )
     noise_parser.add_argument(
-        "--noise-levels", type=str, default="0,0.02,0.05,0.10,0.15,0.20",
-        help="Comma-separated noise rates (0.0 to 1.0)"
+        "--noise-levels",
+        type=str,
+        default="0,0.02,0.05,0.10,0.15,0.20",
+        help="Comma-separated noise rates (0.0 to 1.0)",
     )
     noise_parser.add_argument("--num-articles", type=int, default=3)
     noise_parser.add_argument("--questions-per-article", type=int, default=3)
     noise_parser.add_argument(
-        "--noise-question", action="store_true",
-        help="Also apply noise to question and options (default: article only)"
+        "--noise-question",
+        action="store_true",
+        help="Also apply noise to question and options (default: article only)",
     )
 
     # Tables experiment command (Experiment B)
@@ -2491,12 +2694,14 @@ def main() -> None:
         "tables", help="Run WikiTableQuestions experiment (Experiment B)"
     )
     tables_parser.add_argument(
-        "--mode", type=str, default="large", choices=EXPERIMENT_MODES,
-        help="Vision mode for table images"
+        "--mode",
+        type=str,
+        default="large",
+        choices=EXPERIMENT_MODES,
+        help="Vision mode for table images",
     )
     tables_parser.add_argument(
-        "--num-tables", type=int, default=20,
-        help="Number of tables to evaluate"
+        "--num-tables", type=int, default=20, help="Number of tables to evaluate"
     )
 
     # Augmented rendering experiment command (Experiment C)
@@ -2504,8 +2709,11 @@ def main() -> None:
         "augmented", help="Run augmented rendering experiment (Experiment C)"
     )
     augmented_parser.add_argument(
-        "--mode", type=str, default="large", choices=EXPERIMENT_MODES,
-        help="Vision mode to use"
+        "--mode",
+        type=str,
+        default="large",
+        choices=EXPERIMENT_MODES,
+        help="Vision mode to use",
     )
     augmented_parser.add_argument("--num-articles", type=int, default=3)
     augmented_parser.add_argument("--questions-per-article", type=int, default=3)
