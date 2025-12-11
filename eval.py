@@ -161,6 +161,105 @@ def render_text_to_image(
     img.save(output_path)
 
 
+def render_text_to_image_with_params(
+    text: str,
+    output_path: str,
+    font_size: int = 12,
+    font_type: str = "mono",  # "mono", "serif", "sans"
+    blur_radius: float = 0.0,
+    jpeg_quality: int | None = None,  # None = PNG, int = JPEG quality
+    max_width: int = 1200,
+    padding: int = 30,
+    line_spacing: int = 4,
+) -> None:
+    """Render text to image with configurable parameters for ablation studies.
+
+    Args:
+        text: The input text to render.
+        output_path: The path where the generated image will be saved.
+        font_size: Font size in points (default 12).
+        font_type: Font type - "mono", "serif", or "sans".
+        blur_radius: Gaussian blur radius (0 = no blur).
+        jpeg_quality: If set, save as JPEG with this quality (1-100). None = PNG.
+        max_width: The maximum width of the output image.
+        padding: The padding around the text content within the image.
+        line_spacing: Additional spacing between lines of text.
+    """
+    from PIL import ImageFilter
+    import io
+
+    # Select font based on type
+    if font_type == "mono":
+        font_path = MONO_FONT_PATH
+    elif font_type == "serif":
+        # Try common serif fonts
+        serif_fonts = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSerif.ttf",
+        ]
+        font_path = next((f for f in serif_fonts if Path(f).exists()), MONO_FONT_PATH)
+    elif font_type == "sans":
+        # Try common sans-serif fonts
+        sans_fonts = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+        ]
+        font_path = next((f for f in sans_fonts if Path(f).exists()), MONO_FONT_PATH)
+    else:
+        font_path = MONO_FONT_PATH
+
+    font = ImageFont.truetype(font_path, font_size)
+
+    # Wrap text to lines
+    lines = []
+    for paragraph in text.split("\n"):
+        if not paragraph.strip():
+            lines.append("")
+            continue
+        words = paragraph.split()
+        current_line = []
+        for word in words:
+            test_line = " ".join(current_line + [word])
+            bbox = font.getbbox(test_line)
+            if bbox[2] > max_width - 2 * padding:
+                if current_line:
+                    lines.append(" ".join(current_line))
+                current_line = [word]
+            else:
+                current_line.append(word)
+        if current_line:
+            lines.append(" ".join(current_line))
+
+    line_height = font_size + line_spacing
+    img_height = len(lines) * line_height + 2 * padding
+    img_width = max_width
+
+    img = Image.new("RGB", (img_width, img_height), color=BG_COLOR)
+    draw = ImageDraw.Draw(img)
+
+    y = padding
+    for line in lines:
+        draw.text((padding, y), line, font=font, fill=FG_COLOR)
+        y += line_height
+
+    # Apply blur if specified
+    if blur_radius > 0:
+        img = img.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+
+    # Save as JPEG with quality or PNG
+    if jpeg_quality is not None:
+        # Save to buffer as JPEG then reload (simulates JPEG compression artifacts)
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=jpeg_quality)
+        buffer.seek(0)
+        img = Image.open(buffer)
+        img.save(output_path)
+    else:
+        img.save(output_path)
+
+
 # ============================================================================
 # Augmented Rendering Functions (Experiment C: Visual Metadata Injection)
 # ============================================================================
@@ -699,6 +798,37 @@ def correct_spelling(text: str) -> str:
 
 
 _symspell_instance = None
+
+
+def to_char_level(text: str) -> str:
+    """Convert text to character-level representation.
+
+    Inserts spaces between characters to force character-level tokenization.
+    This bypasses BPE's subword tokenization.
+
+    Example:
+        "vicious" → "v i c i o u s"
+        "vicioua" → "v i c i o u a"
+
+    The key insight: BPE tokenizes "vicious" as [vic][ious] but "vicioua" as
+    [vic][iou][a] — different token boundaries. Character-level gives consistent
+    1-char-per-token representation regardless of corruption.
+
+    Args:
+        text: Input text
+
+    Returns:
+        Text with spaces between characters (preserving word boundaries with double spaces)
+    """
+    result = []
+    for char in text:
+        if char == ' ':
+            result.append('  ')  # Double space to mark word boundary
+        elif char == '\n':
+            result.append('\n')  # Preserve newlines
+        else:
+            result.append(char + ' ')
+    return ''.join(result).rstrip()
 
 
 def _get_symspell():
@@ -2067,6 +2197,480 @@ def cmd_noise_baselines(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_rendering_ablations(args: argparse.Namespace) -> None:
+    """Run rendering parameter ablation study.
+
+    Tests what visual properties matter for vision's robustness by varying:
+    - Font size (8, 12, 16, 24 pt)
+    - Font type (mono, serif, sans)
+    - Visual degradation (blur, JPEG compression)
+
+    All tests use 10% character noise to measure robustness.
+    """
+    data_dir, results_dir = setup_experiment_dirs("rendering_ablations")
+
+    logger.info("Loading QuALITY dataset...")
+    try:
+        ds = load_dataset("emozilla/quality", split="validation")
+    except Exception as e:
+        logger.error(f"Error loading QuALITY dataset: {e}")
+        return
+
+    # Group questions by article
+    articles_dict = {}
+    for item in ds:
+        article_hash = hashlib.md5(item["article"][:100].encode()).hexdigest()[:8]
+        if article_hash not in articles_dict:
+            articles_dict[article_hash] = {"article": item["article"], "questions": []}
+        articles_dict[article_hash]["questions"].append(
+            {
+                "question": item["question"],
+                "options": item["options"],
+                "gold_label": item["answer"],
+            }
+        )
+
+    article_hashes = list(articles_dict.keys())[: args.num_articles]
+    logger.info(f"Found {len(articles_dict)} unique articles")
+
+    model, tokenizer = load_model()
+
+    # Define ablation conditions
+    ablation_configs = [
+        # Baseline
+        {"name": "baseline", "font_size": 12, "font_type": "mono", "blur": 0, "jpeg": None},
+        # Font size ablations
+        {"name": "font_8pt", "font_size": 8, "font_type": "mono", "blur": 0, "jpeg": None},
+        {"name": "font_16pt", "font_size": 16, "font_type": "mono", "blur": 0, "jpeg": None},
+        {"name": "font_24pt", "font_size": 24, "font_type": "mono", "blur": 0, "jpeg": None},
+        # Font type ablations
+        {"name": "font_serif", "font_size": 12, "font_type": "serif", "blur": 0, "jpeg": None},
+        {"name": "font_sans", "font_size": 12, "font_type": "sans", "blur": 0, "jpeg": None},
+        # Visual degradation ablations
+        {"name": "blur_1", "font_size": 12, "font_type": "mono", "blur": 1.0, "jpeg": None},
+        {"name": "blur_2", "font_size": 12, "font_type": "mono", "blur": 2.0, "jpeg": None},
+        {"name": "jpeg_50", "font_size": 12, "font_type": "mono", "blur": 0, "jpeg": 50},
+        {"name": "jpeg_20", "font_size": 12, "font_type": "mono", "blur": 0, "jpeg": 20},
+    ]
+
+    noise_level = 0.10  # Fixed at 10% character noise
+
+    logger.info("RENDERING ABLATION EXPERIMENT")
+    logger.info(f"Noise level: {int(noise_level * 100)}% (fixed)")
+    logger.info(f"Ablation conditions: {len(ablation_configs)}")
+    logger.info(f"Articles: {args.num_articles}, Questions/article: {args.questions_per_article}")
+
+    results = {
+        "noise_level": noise_level,
+        "ablation_configs": ablation_configs,
+        "articles": {},
+    }
+
+    # Track stats per ablation
+    ablation_stats = {cfg["name"]: {"correct": 0, "total": 0} for cfg in ablation_configs}
+
+    for article_hash in article_hashes:
+        article_data = articles_dict[article_hash]
+        article = article_data["article"]
+        questions = article_data["questions"][: args.questions_per_article]
+
+        word_count = len(article.split())
+        logger.info(f"\nArticle: {article_hash} ({word_count} words)")
+
+        # Apply noise once per article
+        noisy_article = inject_noise(article, "typos", noise_level, seed=42)
+
+        # Render images for each ablation config
+        for cfg in ablation_configs:
+            img_path = data_dir / f"{article_hash}_{cfg['name']}.png"
+            if not img_path.exists():
+                render_text_to_image_with_params(
+                    noisy_article,
+                    str(img_path),
+                    font_size=cfg["font_size"],
+                    font_type=cfg["font_type"],
+                    blur_radius=cfg["blur"],
+                    jpeg_quality=cfg["jpeg"],
+                )
+
+        results["articles"][article_hash] = {"questions": []}
+
+        for question_data in questions:
+            question = question_data["question"]
+            options = question_data["options"]
+            expected = question_data["gold_label"]
+
+            options_text = "\n".join(f"[{i}] {opt}" for i, opt in enumerate(options))
+
+            question_results = {
+                "question": question[:100],
+                "expected": expected,
+                "ablations": {},
+            }
+
+            # Test each ablation
+            for cfg in ablation_configs:
+                img_path = data_dir / f"{article_hash}_{cfg['name']}.png"
+
+                vision_prompt = f"<image>\n\nQuestion: {question}\n\nOptions:\n{options_text}\n\nAnswer with just the option number (0, 1, 2, or 3):"
+                vision_output, _, _ = run_inference(
+                    vision_prompt,
+                    str(img_path),
+                    mode=args.mode,
+                    model=model,
+                    tokenizer=tokenizer,
+                )
+
+                vision_pred = parse_mc_answer(vision_output)
+                correct = vision_pred == expected
+
+                question_results["ablations"][cfg["name"]] = {
+                    "pred": vision_pred,
+                    "correct": correct,
+                }
+
+                ablation_stats[cfg["name"]]["total"] += 1
+                if correct:
+                    ablation_stats[cfg["name"]]["correct"] += 1
+
+            # Log results for this question
+            baseline_correct = question_results["ablations"]["baseline"]["correct"]
+            status_line = f"  Q: {question[:35]}... | "
+            status_line += f"base:{'✓' if baseline_correct else '✗'}"
+
+            # Show which ablations differ from baseline
+            diffs = []
+            for cfg in ablation_configs[1:]:  # Skip baseline
+                abl_correct = question_results["ablations"][cfg["name"]]["correct"]
+                if abl_correct != baseline_correct:
+                    diffs.append(f"{cfg['name']}:{'✓' if abl_correct else '✗'}")
+
+            if diffs:
+                status_line += f" | differs: {', '.join(diffs)}"
+            logger.info(status_line)
+
+            results["articles"][article_hash]["questions"].append(question_results)
+
+    # Summary table
+    logger.info("\n" + "=" * 80)
+    logger.info("RENDERING ABLATION RESULTS (10% noise)")
+    logger.info("=" * 80)
+    logger.info(f"{'Condition':<15} | {'Accuracy':<10} | {'vs Baseline':<12} | Description")
+    logger.info("-" * 70)
+
+    baseline_acc = (
+        ablation_stats["baseline"]["correct"] / ablation_stats["baseline"]["total"] * 100
+        if ablation_stats["baseline"]["total"] > 0
+        else 0
+    )
+
+    descriptions = {
+        "baseline": "12pt mono, no degradation",
+        "font_8pt": "Smaller font (8pt)",
+        "font_16pt": "Larger font (16pt)",
+        "font_24pt": "Much larger font (24pt)",
+        "font_serif": "Serif font (DejaVu Serif)",
+        "font_sans": "Sans-serif font (DejaVu Sans)",
+        "blur_1": "Gaussian blur radius=1",
+        "blur_2": "Gaussian blur radius=2",
+        "jpeg_50": "JPEG compression Q=50",
+        "jpeg_20": "JPEG compression Q=20",
+    }
+
+    for cfg in ablation_configs:
+        name = cfg["name"]
+        stats = ablation_stats[name]
+        acc = stats["correct"] / stats["total"] * 100 if stats["total"] > 0 else 0
+        diff = acc - baseline_acc
+        diff_str = f"{diff:+.1f}%" if name != "baseline" else "-"
+        logger.info(f"{name:<15} | {acc:>8.1f}% | {diff_str:>10} | {descriptions.get(name, '')}")
+
+    # Key findings
+    logger.info("\n" + "-" * 70)
+    logger.info("KEY FINDINGS:")
+
+    # Find best and worst ablations
+    sorted_ablations = sorted(
+        ablation_stats.items(),
+        key=lambda x: x[1]["correct"] / x[1]["total"] if x[1]["total"] > 0 else 0,
+        reverse=True,
+    )
+
+    best_name, best_stats = sorted_ablations[0]
+    worst_name, worst_stats = sorted_ablations[-1]
+    best_acc = best_stats["correct"] / best_stats["total"] * 100
+    worst_acc = worst_stats["correct"] / worst_stats["total"] * 100
+
+    logger.info(f"  Best condition: {best_name} ({best_acc:.1f}%)")
+    logger.info(f"  Worst condition: {worst_name} ({worst_acc:.1f}%)")
+    logger.info(f"  Spread: {best_acc - worst_acc:.1f}% difference")
+
+    # Check if visual degradation hurts
+    blur_acc = ablation_stats["blur_2"]["correct"] / ablation_stats["blur_2"]["total"] * 100
+    jpeg_acc = ablation_stats["jpeg_20"]["correct"] / ablation_stats["jpeg_20"]["total"] * 100
+
+    if blur_acc < baseline_acc - 5:
+        logger.info("  → Blur significantly hurts accuracy (pixel-level info matters)")
+    elif blur_acc > baseline_acc - 5:
+        logger.info("  → Blur does NOT significantly hurt accuracy (shape-level robustness)")
+
+    if jpeg_acc < baseline_acc - 5:
+        logger.info("  → JPEG artifacts significantly hurt accuracy")
+    elif jpeg_acc > baseline_acc - 5:
+        logger.info("  → JPEG artifacts do NOT significantly hurt accuracy")
+
+    results["summary"] = {
+        "baseline_accuracy": baseline_acc,
+        "ablation_accuracies": {
+            name: stats["correct"] / stats["total"] * 100 if stats["total"] > 0 else 0
+            for name, stats in ablation_stats.items()
+        },
+    }
+
+    save_experiment_results(
+        results,
+        results_dir,
+        f"rendering_ablations_{args.mode}_{args.num_articles}articles.json",
+    )
+
+
+def cmd_char_level(args: argparse.Namespace) -> None:
+    """Run character-level tokenization experiment.
+
+    Tests the BPE Fragmentation Hypothesis: Is vision's robustness due to
+    BPE tokenization fragmenting corrupted words into unusual token sequences?
+
+    Compares three conditions:
+    1. BPE text: Standard subword tokenization (baseline)
+    2. Char-level text: Character-by-character tokenization
+    3. Vision: Image-based encoding
+
+    If char-level text matches vision's robustness, BPE fragmentation is the culprit.
+    """
+    data_dir, results_dir = setup_experiment_dirs("char_level")
+
+    logger.info("Loading QuALITY dataset...")
+    try:
+        ds = load_dataset("emozilla/quality", split="validation")
+    except Exception as e:
+        logger.error(f"Error loading QuALITY dataset: {e}")
+        return
+
+    # Group questions by article
+    articles_dict = {}
+    for item in ds:
+        article_hash = hashlib.md5(item["article"][:100].encode()).hexdigest()[:8]
+        if article_hash not in articles_dict:
+            articles_dict[article_hash] = {"article": item["article"], "questions": []}
+        articles_dict[article_hash]["questions"].append(
+            {
+                "question": item["question"],
+                "options": item["options"],
+                "gold_label": item["answer"],
+            }
+        )
+
+    article_hashes = list(articles_dict.keys())[: args.num_articles]
+    logger.info(f"Found {len(articles_dict)} unique articles")
+
+    model, tokenizer = load_model()
+
+    noise_levels = [float(x) for x in args.noise_levels.split(",")]
+
+    logger.info("CHARACTER-LEVEL TOKENIZATION EXPERIMENT")
+    logger.info(f"Noise type: {args.noise_type}")
+    logger.info(f"Noise levels: {noise_levels}")
+    logger.info(f"Articles: {args.num_articles}, Questions/article: {args.questions_per_article}")
+    logger.info("Baselines: BPE text, char-level text, vision")
+
+    results = {
+        "noise_type": args.noise_type,
+        "noise_levels": noise_levels,
+        "articles": {},
+    }
+
+    # Track stats per level
+    level_stats = {
+        level: {"bpe_correct": 0, "char_correct": 0, "vision_correct": 0, "total": 0}
+        for level in noise_levels
+    }
+
+    for article_hash in article_hashes:
+        article_data = articles_dict[article_hash]
+        article = article_data["article"]
+        questions = article_data["questions"][: args.questions_per_article]
+
+        word_count = len(article.split())
+        logger.info(f"\nArticle: {article_hash} ({word_count} words)")
+
+        results["articles"][article_hash] = {"questions": []}
+
+        for question_data in questions:
+            question = question_data["question"]
+            options = question_data["options"]
+            expected = question_data["gold_label"]
+
+            options_text = "\n".join(f"[{i}] {opt}" for i, opt in enumerate(options))
+
+            question_results = {
+                "question": question[:100],
+                "expected": expected,
+                "levels": {},
+            }
+
+            for level in noise_levels:
+                # Apply noise
+                noisy_article = inject_noise(
+                    article, args.noise_type, level, seed=42 + int(level * 1000)
+                )
+                noisy_question = inject_noise(
+                    question, args.noise_type, level, seed=43 + int(level * 1000)
+                )
+                noisy_options = inject_noise(
+                    options_text, args.noise_type, level, seed=44 + int(level * 1000)
+                )
+
+                # Convert to char-level (truncate article to avoid OOM - char-level ~2x length)
+                # Keep first ~1500 words to stay within context limits
+                truncated_article = " ".join(noisy_article.split()[:1500])
+                char_article = to_char_level(truncated_article)
+                char_question = to_char_level(noisy_question)
+                char_options = to_char_level(noisy_options)
+
+                # Render noisy article to image
+                img_path = data_dir / f"{article_hash}_noise{int(level * 100)}.png"
+                if not img_path.exists():
+                    render_text_to_image(noisy_article, str(img_path))
+
+                # Baseline 1: BPE text (standard) - use same truncated article for fair comparison
+                bpe_prompt = f"<image>\n{truncated_article}\n\nQuestion: {noisy_question}\n\nOptions:\n{noisy_options}\n\nAnswer with just the option number (0, 1, 2, or 3):"
+                bpe_output, _, _ = run_inference(
+                    bpe_prompt, "", mode="text", model=model, tokenizer=tokenizer
+                )
+                bpe_pred = parse_mc_answer(bpe_output)
+
+                # Baseline 2: Character-level text
+                char_prompt = f"<image>\n{char_article}\n\nQuestion: {char_question}\n\nOptions:\n{char_options}\n\nAnswer with just the option number (0, 1, 2, or 3):"
+                char_output, _, _ = run_inference(
+                    char_prompt, "", mode="text", model=model, tokenizer=tokenizer
+                )
+                char_pred = parse_mc_answer(char_output)
+
+                # Baseline 3: Vision
+                vision_prompt = f"<image>\n\nQuestion: {noisy_question}\n\nOptions:\n{noisy_options}\n\nAnswer with just the option number (0, 1, 2, or 3):"
+                vision_output, _, _ = run_inference(
+                    vision_prompt, str(img_path), mode=args.mode, model=model, tokenizer=tokenizer
+                )
+                vision_pred = parse_mc_answer(vision_output)
+
+                bpe_correct = bpe_pred == expected
+                char_correct = char_pred == expected
+                vision_correct = vision_pred == expected
+
+                level_str = f"{int(level * 100)}%"
+                logger.info(
+                    f"  [{level_str:>3}] Q: {question[:30]}... | "
+                    f"BPE: {bpe_pred} {'✓' if bpe_correct else '✗'} | "
+                    f"Char: {char_pred} {'✓' if char_correct else '✗'} | "
+                    f"Vision: {vision_pred} {'✓' if vision_correct else '✗'}"
+                )
+
+                question_results["levels"][level] = {
+                    "bpe_pred": bpe_pred,
+                    "char_pred": char_pred,
+                    "vision_pred": vision_pred,
+                    "bpe_correct": bpe_correct,
+                    "char_correct": char_correct,
+                    "vision_correct": vision_correct,
+                }
+
+                level_stats[level]["total"] += 1
+                if bpe_correct:
+                    level_stats[level]["bpe_correct"] += 1
+                if char_correct:
+                    level_stats[level]["char_correct"] += 1
+                if vision_correct:
+                    level_stats[level]["vision_correct"] += 1
+
+            results["articles"][article_hash]["questions"].append(question_results)
+
+    # Summary table
+    logger.info("\n" + "=" * 80)
+    logger.info("CHARACTER-LEVEL TOKENIZATION EXPERIMENT RESULTS")
+    logger.info("=" * 80)
+    logger.info(f"Noise type: {args.noise_type}")
+    logger.info(f"Total questions per level: {level_stats[noise_levels[0]]['total']}")
+    logger.info("")
+    logger.info(
+        f"{'Noise':<8} | {'BPE Text':<10} | {'Char Text':<10} | {'Vision':<10} | {'Char vs BPE':<12} | {'V vs Char':<10}"
+    )
+    logger.info("-" * 75)
+
+    for level in noise_levels:
+        stats = level_stats[level]
+        n = stats["total"]
+        if n > 0:
+            bpe_acc = stats["bpe_correct"] / n * 100
+            char_acc = stats["char_correct"] / n * 100
+            vision_acc = stats["vision_correct"] / n * 100
+            char_vs_bpe = char_acc - bpe_acc
+            v_vs_char = vision_acc - char_acc
+
+            level_str = f"{int(level * 100)}%"
+            char_bpe_str = f"{char_vs_bpe:+.1f}%" if char_vs_bpe != 0 else "0.0%"
+            v_char_str = f"{v_vs_char:+.1f}%" if v_vs_char != 0 else "0.0%"
+            logger.info(
+                f"{level_str:<8} | {bpe_acc:>8.1f}% | {char_acc:>8.1f}% | {vision_acc:>8.1f}% | {char_bpe_str:>10} | {v_char_str:>8}"
+            )
+
+    # Key findings
+    logger.info("\n" + "-" * 75)
+    logger.info("KEY FINDINGS:")
+
+    # Average improvements
+    avg_char_vs_bpe = sum(
+        (level_stats[lvl]["char_correct"] - level_stats[lvl]["bpe_correct"])
+        / level_stats[lvl]["total"]
+        * 100
+        for lvl in noise_levels
+        if level_stats[lvl]["total"] > 0
+    ) / len(noise_levels)
+
+    avg_vision_vs_char = sum(
+        (level_stats[lvl]["vision_correct"] - level_stats[lvl]["char_correct"])
+        / level_stats[lvl]["total"]
+        * 100
+        for lvl in noise_levels
+        if level_stats[lvl]["total"] > 0
+    ) / len(noise_levels)
+
+    logger.info(f"  Char-level avg improvement over BPE: {avg_char_vs_bpe:+.1f}%")
+    logger.info(f"  Vision avg advantage over char-level: {avg_vision_vs_char:+.1f}%")
+
+    if avg_char_vs_bpe > 5:
+        logger.info("  → Char-level helps! BPE fragmentation is part of the problem.")
+    elif avg_char_vs_bpe < -5:
+        logger.info("  → Char-level hurts! BPE is NOT the problem.")
+    else:
+        logger.info("  → Char-level has minimal effect. BPE fragmentation is not the main issue.")
+
+    if avg_vision_vs_char > 5:
+        logger.info("  → Vision still beats char-level. Something beyond tokenization matters.")
+    else:
+        logger.info("  → Char-level matches vision! BPE was the main culprit.")
+
+    results["summary"] = {
+        "avg_char_vs_bpe": avg_char_vs_bpe,
+        "avg_vision_vs_char": avg_vision_vs_char,
+    }
+
+    save_experiment_results(
+        results,
+        results_dir,
+        f"char_level_{args.noise_type}_{args.mode}_{args.num_articles}articles.json",
+    )
+
+
 def cmd_augmented(args: argparse.Namespace) -> None:
     """Run augmented rendering experiment comparing plain vs highlighted text.
 
@@ -3109,6 +3713,51 @@ def main() -> None:
     noise_baselines_parser.add_argument("--questions-per-article", type=int, default=5)
     noise_baselines_parser.set_defaults(func=cmd_noise_baselines)
 
+    # Rendering ablations experiment command
+    ablations_parser = subparsers.add_parser(
+        "rendering-ablations",
+        help="Run rendering parameter ablation study (font size, type, blur, JPEG)",
+    )
+    ablations_parser.add_argument(
+        "--mode",
+        type=str,
+        default="large",
+        choices=EXPERIMENT_MODES,
+        help="Vision mode to use",
+    )
+    ablations_parser.add_argument("--num-articles", type=int, default=3)
+    ablations_parser.add_argument("--questions-per-article", type=int, default=5)
+    ablations_parser.set_defaults(func=cmd_rendering_ablations)
+
+    # Character-level tokenization experiment command
+    char_level_parser = subparsers.add_parser(
+        "char-level",
+        help="Run character-level tokenization experiment (BPE fragmentation hypothesis)",
+    )
+    char_level_parser.add_argument(
+        "--mode",
+        type=str,
+        default="large",
+        choices=EXPERIMENT_MODES,
+        help="Vision mode to use",
+    )
+    char_level_parser.add_argument(
+        "--noise-type",
+        type=str,
+        default="typos",
+        choices=["typos", "ocr", "deletions", "insertions", "mixed"],
+        help="Type of noise to inject",
+    )
+    char_level_parser.add_argument(
+        "--noise-levels",
+        type=str,
+        default="0,0.05,0.10,0.15,0.20",
+        help="Comma-separated noise rates (0.0 to 1.0)",
+    )
+    char_level_parser.add_argument("--num-articles", type=int, default=3)
+    char_level_parser.add_argument("--questions-per-article", type=int, default=5)
+    char_level_parser.set_defaults(func=cmd_char_level)
+
     # Tables experiment command (Experiment B)
     tables_parser = subparsers.add_parser(
         "tables", help="Run WikiTableQuestions experiment (Experiment B)"
@@ -3164,6 +3813,10 @@ def main() -> None:
         cmd_noise(args)
     elif args.command == "noise-baselines":
         cmd_noise_baselines(args)
+    elif args.command == "rendering-ablations":
+        cmd_rendering_ablations(args)
+    elif args.command == "char-level":
+        cmd_char_level(args)
     elif args.command == "tables":
         cmd_tables(args)
     elif args.command == "augmented":
