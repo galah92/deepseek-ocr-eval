@@ -806,6 +806,20 @@ def answers_match(predicted: str, gold_answers: list[str]) -> bool:
     return False
 
 
+def parse_mc_answer(output: str) -> int:
+    """Parse multiple-choice answer (0-3) from model output.
+
+    Looks for the first digit 0-3 in the output string.
+
+    Args:
+        output: Raw model output string.
+
+    Returns:
+        Integer 0-3 if found, -1 if no valid answer detected.
+    """
+    return next((int(c) for c in output.strip() if c in "0123"), -1)
+
+
 def run_inference(
     prompt: str,
     image_path: str | Path,
@@ -1059,10 +1073,8 @@ def cmd_quality(args: argparse.Namespace) -> None:
             vision_tokens = settings.tokens + PROMPT_TOKEN_OVERHEAD
 
             # Parse answers
-            text_pred = next((int(c) for c in text_output.strip() if c in "0123"), -1)
-            vision_pred = next(
-                (int(c) for c in vision_output.strip() if c in "0123"), -1
-            )
+            text_pred = parse_mc_answer(text_output)
+            vision_pred = parse_mc_answer(vision_output)
 
             text_correct = text_pred == expected
             vision_correct = vision_pred == expected
@@ -1311,7 +1323,7 @@ def cmd_truncation(args: argparse.Namespace) -> None:
             full_output, _, _ = run_inference(
                 full_prompt, "", mode="text", model=model, tokenizer=tokenizer
             )
-            full_pred = next((int(c) for c in full_output.strip() if c in "0123"), -1)
+            full_pred = parse_mc_answer(full_output)
             full_correct = full_pred == expected
 
             # Condition 2: Truncated first N tokens
@@ -1319,9 +1331,7 @@ def cmd_truncation(args: argparse.Namespace) -> None:
             trunc_first_output, _, _ = run_inference(
                 trunc_first_prompt, "", mode="text", model=model, tokenizer=tokenizer
             )
-            trunc_first_pred = next(
-                (int(c) for c in trunc_first_output.strip() if c in "0123"), -1
-            )
+            trunc_first_pred = parse_mc_answer(trunc_first_output)
             trunc_first_correct = trunc_first_pred == expected
 
             # Condition 3: Truncated last N tokens
@@ -1329,9 +1339,7 @@ def cmd_truncation(args: argparse.Namespace) -> None:
             trunc_last_output, _, _ = run_inference(
                 trunc_last_prompt, "", mode="text", model=model, tokenizer=tokenizer
             )
-            trunc_last_pred = next(
-                (int(c) for c in trunc_last_output.strip() if c in "0123"), -1
-            )
+            trunc_last_pred = parse_mc_answer(trunc_last_output)
             trunc_last_correct = trunc_last_pred == expected
 
             # Condition 4: Vision (full article rendered)
@@ -1343,9 +1351,7 @@ def cmd_truncation(args: argparse.Namespace) -> None:
                 model=model,
                 tokenizer=tokenizer,
             )
-            vision_pred = next(
-                (int(c) for c in vision_output.strip() if c in "0123"), -1
-            )
+            vision_pred = parse_mc_answer(vision_output)
             vision_correct = vision_pred == expected
 
             logger.info(f"  Q: {question[:50]}...")
@@ -1566,12 +1572,8 @@ def cmd_noise(args: argparse.Namespace) -> None:
                 )
 
                 # Parse answers
-                text_pred = next(
-                    (int(c) for c in text_output.strip() if c in "0123"), -1
-                )
-                vision_pred = next(
-                    (int(c) for c in vision_output.strip() if c in "0123"), -1
-                )
+                text_pred = parse_mc_answer(text_output)
+                vision_pred = parse_mc_answer(vision_output)
 
                 text_correct = text_pred == expected
                 vision_correct = vision_pred == expected
@@ -1775,9 +1777,7 @@ def cmd_augmented(args: argparse.Namespace) -> None:
                 model=model,
                 tokenizer=tokenizer,
             )
-            plain_answer = next(
-                (int(c) for c in plain_output.strip() if c in "0123"), -1
-            )
+            plain_answer = parse_mc_answer(plain_output)
             plain_correct = plain_answer == correct
 
             # 2. Augmented vision
@@ -1789,7 +1789,7 @@ def cmd_augmented(args: argparse.Namespace) -> None:
                 model=model,
                 tokenizer=tokenizer,
             )
-            aug_answer = next((int(c) for c in aug_output.strip() if c in "0123"), -1)
+            aug_answer = parse_mc_answer(aug_output)
             aug_correct = aug_answer == correct
 
             # 3. Text-only baseline
@@ -1797,7 +1797,7 @@ def cmd_augmented(args: argparse.Namespace) -> None:
             text_output, _, _ = run_inference(
                 text_prompt, "", mode="text", model=model, tokenizer=tokenizer
             )
-            text_answer = next((int(c) for c in text_output.strip() if c in "0123"), -1)
+            text_answer = parse_mc_answer(text_output)
             text_correct = text_answer == correct
 
             # Log results
