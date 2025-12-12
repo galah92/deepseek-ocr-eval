@@ -49,7 +49,7 @@ Beyond compression, we hypothesize that encoding text as an image can capture **
 
 ### The Case Against Optical Compression (Lee et al., 2024)
 
-"[Optical Context Compression Is Just (Bad) Autoencoding](https://arxiv.org/abs/2512.03643)" presents a rigorous critique of DeepSeek-OCR's claims. Their key findings:
+"[Optical Context Compression Is Just (Bad) Autoencoding](https://arxiv.org/abs/2512.03643)" ([code](https://github.com/ivnle/bad-autoencoding)) presents a rigorous critique of DeepSeek-OCR's claims. Their key findings:
 
 **1. Vision doesn't beat truncation.** For language modeling tasks, simply keeping the most recent N text tokens outperforms vision-based compression at matched token budgets. This is a damning result—if truncation works better, why use vision at all?
 
