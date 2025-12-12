@@ -192,11 +192,36 @@ This is fundamentally different from text-level approximations—it operates on 
 **Key question:** Does vision's advantage come from full-document coverage (mean pooling would match) or from the visual encoding itself (vision would still win)?
 
 ```bash
-# Run with embedding-level mean pooling baseline
+# Run with embedding-level mean pooling baseline (untrained)
 uv run python eval.py truncation --mode large --num-articles 5 --include-mean-pool
+
+# Run with Lee et al.'s TRAINED mean pooling checkpoint (~12GB download)
+uv run python eval.py truncation --mode large --num-articles 5 --include-mean-pool --use-trained-meanpool
 ```
 
-> **⚠️ Training Caveat:** Lee et al. *trained* their mean pooling system (fine-tuning the model to understand pooled embeddings and learning a separator embedding). Our implementation uses untrained mean pooling for inference, meaning the model hasn't learned to interpret pooled representations. This makes our mean pooling baseline a **lower bound**—trained mean pooling would likely perform better. Vision encoding, by contrast, is pre-trained (DeepSeek-OCR was trained on rendered text images).
+**Trained vs Untrained Mean Pooling:**
+
+| Mode | Separator | Decoder | Download |
+|------|-----------|---------|----------|
+| `--include-mean-pool` | Random init | Base DeepSeek-OCR | None |
+| `--use-trained-meanpool` | Trained | Fine-tuned on FineWiki | ~12GB |
+
+The trained checkpoint (`ivnle/bad-autoencoding/meanpool_w4s4_h0_lm_recon-init`) includes:
+- Fine-tuned decoder weights (trained on 510K FineWiki samples)
+- Trained separator embedding
+- Fixed window=4, stride=4 configuration
+
+```python
+# Programmatic usage:
+from baselines import load_trained_meanpool_model, EmbeddingMeanPooler
+
+model, tokenizer, separator = load_trained_meanpool_model()
+pooler = EmbeddingMeanPooler(
+    model, tokenizer,
+    separator_embed=separator,
+    window_size=4, stride=4
+)
+```
 
 **Interpretation:** This result challenges Lee et al.'s conclusion. Their finding that "vision fails vs truncation" holds for language modeling (recency-matters) but **not** for QA tasks (coverage-matters). Vision encoding preserves document-wide information that truncation discards.
 

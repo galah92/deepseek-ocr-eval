@@ -1988,7 +1988,23 @@ def cmd_truncation(args: argparse.Namespace) -> None:
     logger.info(f"Found {len(articles)} unique articles")
     article_items = list(articles.items())[: args.num_articles]
 
-    model, tokenizer = load_model()
+    include_mean_pool = getattr(args, "include_mean_pool", False)
+    use_trained_meanpool = getattr(args, "use_trained_meanpool", False)
+
+    # Load model (trained or base)
+    trained_separator = None
+    if use_trained_meanpool:
+        from baselines.meanpool import (
+            LEE_STRIDE,
+            LEE_WINDOW_SIZE,
+            load_trained_meanpool_model,
+        )
+        logger.info("Loading Lee et al.'s trained mean pooling checkpoint...")
+        model, tokenizer, trained_separator = load_trained_meanpool_model()
+        include_mean_pool = True  # Automatically enable mean pool if using trained
+    else:
+        model, tokenizer = load_model()
+
     settings = MODE_SETTINGS[args.mode]
 
     # Token budget for truncation = vision tokens for this mode
@@ -2001,7 +2017,8 @@ def cmd_truncation(args: argparse.Namespace) -> None:
     results = {
         "mode": args.mode,
         "token_budget": token_budget,
-        "include_mean_pool": getattr(args, "include_mean_pool", False),
+        "include_mean_pool": include_mean_pool,
+        "use_trained_meanpool": use_trained_meanpool,
         "articles": {},
         "summary": {},
     }
@@ -2014,13 +2031,14 @@ def cmd_truncation(args: argparse.Namespace) -> None:
         "total": 0,
     }
 
-    include_mean_pool = getattr(args, "include_mean_pool", False)
-
     logger.info(
         f"COMPRESSION BASELINE EXPERIMENT: Mode={args.mode}, Articles={args.num_articles}, Token Budget={token_budget}"
     )
     if include_mean_pool:
-        logger.info("Including mean pooling baseline (Lee et al.)")
+        if use_trained_meanpool:
+            logger.info("Including TRAINED mean pooling baseline (Lee et al. checkpoint)")
+        else:
+            logger.info("Including untrained mean pooling baseline")
 
     for article_hash, article_data in article_items:
         article = article_data["article"]
@@ -2048,18 +2066,32 @@ def cmd_truncation(args: argparse.Namespace) -> None:
         # Initialize embedding-level mean pooler if needed
         mean_pooler = None
         if include_mean_pool:
-            mean_pooler = EmbeddingMeanPooler(
-                model=model,
-                tokenizer=tokenizer,
-                target_tokens=token_budget,
-                device="cuda" if torch.cuda.is_available() else "cpu",
-            )
+            if use_trained_meanpool:
+                # Use trained model with fixed window/stride
+                from baselines.meanpool import EmbeddingMeanPooler as TrainedMeanPooler
+                mean_pooler = TrainedMeanPooler(
+                    model=model,
+                    tokenizer=tokenizer,
+                    target_tokens=token_budget,
+                    device="cuda" if torch.cuda.is_available() else "cpu",
+                    separator_embed=trained_separator,
+                    window_size=LEE_WINDOW_SIZE,
+                    stride=LEE_STRIDE,
+                )
+            else:
+                mean_pooler = EmbeddingMeanPooler(
+                    model=model,
+                    tokenizer=tokenizer,
+                    target_tokens=token_budget,
+                    device="cuda" if torch.cuda.is_available() else "cpu",
+                )
 
         logger.info(f"  Article tokens: {article_tokens}")
         logger.info(f"  Truncated (first): {trunc_first_tokens} tokens")
         logger.info(f"  Truncated (last): {trunc_last_tokens} tokens")
         if include_mean_pool:
-            logger.info(f"  Mean pool (embedding-level): {token_budget} tokens")
+            mode_str = "TRAINED" if use_trained_meanpool else "untrained"
+            logger.info(f"  Mean pool ({mode_str}): {token_budget} tokens")
         logger.info(f"  Vision: {settings.tokens} tokens")
 
         article_results = {
@@ -4411,6 +4443,11 @@ def main() -> None:
         "--include-mean-pool",
         action="store_true",
         help="Include mean pooling baseline (Lee et al.'s strongest simple baseline)",
+    )
+    trunc_parser.add_argument(
+        "--use-trained-meanpool",
+        action="store_true",
+        help="Use Lee et al.'s trained mean pooling checkpoint (~12GB download)",
     )
 
     # Noise injection experiment command (Experiment A)
