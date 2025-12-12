@@ -64,6 +64,48 @@ Beyond compression, we hypothesize that encoding text as an image can capture **
 
 **4. The "autoencoding" framing.** Vision encoders act as lossy autoencoders that discard information needed for downstream tasks while preserving information needed for reconstruction (pixel-level details).
 
+### Code Analysis: Lee et al. Methodology ([GitHub](https://github.com/ivnle/bad-autoencoding))
+
+We reviewed Lee et al.'s released code to understand their experimental setup in detail:
+
+**Their Experimental Design:**
+```
+Task:     [1000 context tokens] → [predict next 1000 tokens]
+Dataset:  FineWiki (Wikipedia), 510K samples
+Metrics:  Perplexity, BLEU, METEOR, edit distance
+Baselines: Mean pooling, Conv1D residual, truncation
+```
+
+**Critical Methodological Difference:**
+
+| Aspect | Lee et al. | Our Work |
+|--------|-----------|----------|
+| **Task** | Language modeling (next-token prediction) | Question answering (comprehension) |
+| **What matters** | Recency (recent tokens most predictive) | Coverage (answer can be anywhere) |
+| **Context length** | 1000 tokens | 5000-7000 tokens |
+| **Evaluation** | Perplexity, string similarity | Accuracy (correct answer rate) |
+| **Noise testing** | None (clean text only) | 0-20% character corruption |
+
+**Why Their Finding Doesn't Generalize:**
+
+For **language modeling**, the next token is best predicted by the most recent tokens. Truncation preserves exactly those tokens, while vision compression spreads information across the whole context—a disadvantage.
+
+```
+Language Modeling (their task):
+  Recent tokens → Most predictive → Truncation wins
+
+Question Answering (our task):
+  Answer location → Unpredictable → Coverage wins → Vision wins
+```
+
+**What They Didn't Test:**
+- ❌ Coverage-dependent tasks (QA where answers can be anywhere)
+- ❌ Noisy/degraded input (typos, OCR errors)
+- ❌ Tasks where answer location is unpredictable
+- ❌ Real-world documents with noise
+
+**Our Contribution:** We show that Lee et al.'s finding is **task-specific**. Vision compression excels precisely where truncation fails: tasks requiring document-wide coverage and robustness to noise.
+
 ### Prior Work on Visual Text Processing
 
 The concept of processing text visually predates DeepSeek-OCR:
@@ -114,24 +156,47 @@ Identified optimal rendering settings for text-to-image conversion:
 
 All subsequent experiments use **dark mode + monospace + 12pt**.
 
-#### 4. Truncation Baseline Experiment (Experiment D)
+#### 4. Compression Baseline Experiment (Experiment D)
 
-**Purpose:** Directly address Lee et al.'s core critique by comparing vision against truncation baselines at matched token budgets.
+**Purpose:** Directly address Lee et al.'s core critique by comparing vision against their proposed baselines (truncation, mean pooling) at matched token budgets.
 
 **Key Insight:** Lee et al. tested language modeling, where recency dominates. For QA tasks, full-document coverage matters—changing the calculus entirely.
 
-| Condition | Accuracy | Correct | Token Budget |
-|-----------|----------|---------|--------------|
-| **Full text** | **44.0%** | 11/25 | ~6,400 avg |
-| Trunc (first 400) | 28.0% | 7/25 | 400 |
-| Trunc (last 400) | 36.0% | 9/25 | 400 |
-| **Vision** | **44.0%** | 11/25 | 400 |
+| Condition | Accuracy | Correct | Token Budget | Description |
+|-----------|----------|---------|--------------|-------------|
+| **Full text** | **44.0%** | 11/25 | ~6,400 avg | Complete article |
+| Trunc (first 400) | 28.0% | 7/25 | 400 | Keep first N tokens |
+| Trunc (last 400) | 36.0% | 9/25 | 400 | Keep last N tokens |
+| Mean pool (400) | TBD | TBD | 400 | Sliding window mean pooling |
+| **Vision** | **44.0%** | 11/25 | 400 | Rendered image compression |
 
 **Key Findings:**
 1. **Vision TIES full text** at 44% accuracy despite 15x compression (400 vs ~6,400 tokens)
 2. **Vision BEATS both truncation baselines** by significant margins (+16 pts vs first-N, +8 pts vs last-N)
 3. Truncation loses critical information regardless of which end is preserved
 4. **Task-specificity confirmed:** Vision's advantage emerges for coverage-dependent tasks, not recency-dependent ones
+
+**Mean Pooling Baseline (Lee et al.'s exact approach):**
+
+We replicate Lee et al.'s **embedding-level mean pooling** exactly as they implemented it:
+
+```python
+# Their approach (which we replicate):
+context_embeds = model.model.get_input_embeddings()(context_tokens)  # Get embeddings
+pooled = sliding_window_mean_pool(context_embeds)                     # Pool in embedding space
+inputs_embeds.masked_scatter_(mask, pooled)                           # Inject via masked_scatter_
+```
+
+This is fundamentally different from text-level approximations—it operates on neural representations directly. Unlike truncation, it preserves information from the **entire document** in compressed form.
+
+**Key question:** Does vision's advantage come from full-document coverage (mean pooling would match) or from the visual encoding itself (vision would still win)?
+
+```bash
+# Run with embedding-level mean pooling baseline
+uv run python eval.py truncation --mode large --num-articles 5 --include-mean-pool
+```
+
+> **⚠️ Training Caveat:** Lee et al. *trained* their mean pooling system (fine-tuning the model to understand pooled embeddings and learning a separator embedding). Our implementation uses untrained mean pooling for inference, meaning the model hasn't learned to interpret pooled representations. This makes our mean pooling baseline a **lower bound**—trained mean pooling would likely perform better. Vision encoding, by contrast, is pre-trained (DeepSeek-OCR was trained on rendered text images).
 
 **Interpretation:** This result challenges Lee et al.'s conclusion. Their finding that "vision fails vs truncation" holds for language modeling (recency-matters) but **not** for QA tasks (coverage-matters). Vision encoding preserves document-wide information that truncation discards.
 

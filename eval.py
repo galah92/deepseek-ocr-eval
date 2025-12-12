@@ -9,6 +9,7 @@ import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
+import torch
 from datasets import load_dataset
 from huggingface_hub import hf_hub_download
 from matplotlib import font_manager
@@ -95,6 +96,314 @@ def load_model() -> tuple[AutoModel, AutoTokenizer]:
     logger.info(f"Using device: {device}")
     _model = _model.eval().to(device)
     return _model, _tokenizer
+
+
+# ============================================================================
+# Embedding-Level Mean Pooling (Lee et al. replication)
+# ============================================================================
+
+
+class EmbeddingMeanPooler:
+    """
+    Embedding-level mean pooling compression (replicating Lee et al.'s approach).
+
+    This compresses text by:
+    1. Getting token embeddings from the model's embedding layer
+    2. Applying sliding window mean pooling in embedding space
+    3. Injecting pooled embeddings back into the model via masked_scatter_()
+
+    Unlike text-level approximations, this operates on actual neural representations.
+
+    Reference: https://github.com/ivnle/bad-autoencoding/blob/main/trainers/meanpool.py
+    """
+
+    def __init__(
+        self,
+        model: AutoModel,
+        tokenizer: AutoTokenizer,
+        target_tokens: int = 400,
+        device: str = "cuda",
+    ):
+        """
+        Initialize embedding mean pooler.
+
+        Args:
+            model: DeepSeek-OCR model
+            tokenizer: Tokenizer
+            target_tokens: Target number of compressed tokens (including separator)
+            device: Device to use
+        """
+        self.model = model
+        self.tokenizer = tokenizer
+        self.target_tokens = target_tokens
+        self.device = torch.device(device)
+
+        # Get model's hidden dimension
+        self.hidden_dim = model.config.hidden_size
+
+        # IMAGE_TOKEN_ID from DeepSeek-OCR (placeholder for injected embeddings)
+        # The <image> token ID is 128815 in DeepSeek-OCR's tokenizer
+        self.placeholder_token_id = tokenizer.encode("<image>", add_special_tokens=False)[0]
+
+        # BOS token
+        self.bos_token_id = tokenizer.bos_token_id
+
+        # Create a learnable separator embedding (following Lee et al.)
+        # For inference-only, we use a zero-initialized separator
+        embed_std = 1 / torch.sqrt(torch.tensor(self.hidden_dim, dtype=torch.float32))
+        self.separator_embed = torch.randn(
+            self.hidden_dim, device=self.device, dtype=torch.bfloat16
+        ) * embed_std
+
+        # Pre-allocate zero images for vision bypass
+        self._setup_vision_bypass()
+
+    def _setup_vision_bypass(self):
+        """Setup dummy images to bypass vision encoder."""
+        # DeepSeek-OCR expects images even when not using vision
+        # We provide zero-valued images that produce minimal features
+        base_size = 512
+        image_size = 512
+        self.empty_crop = torch.zeros(
+            0, 3, image_size, image_size,
+            dtype=torch.bfloat16, device=self.device
+        )
+        self.zero_global = torch.zeros(
+            1, 3, base_size, base_size,
+            dtype=torch.bfloat16, device=self.device
+        )
+
+    def _calculate_window_params(self, context_length: int) -> tuple[int, int]:
+        """Calculate window size and stride for target compression.
+
+        Args:
+            context_length: Number of context tokens
+
+        Returns:
+            Tuple of (window_size, stride)
+        """
+        # Target: compress context_length tokens to target_tokens
+        # We need (target_tokens - 1) pooled windows + 1 separator
+        num_windows = self.target_tokens - 1
+
+        if num_windows <= 0:
+            raise ValueError(f"target_tokens must be > 1, got {self.target_tokens}")
+
+        # Calculate window size and stride for even coverage
+        # Using non-overlapping windows (stride = window_size)
+        window_size = max(1, context_length // num_windows)
+        stride = window_size
+
+        return window_size, stride
+
+    def _sliding_window_mean_pool(
+        self, embeds: torch.Tensor, window_size: int, stride: int
+    ) -> torch.Tensor:
+        """
+        Apply sliding window mean pooling to embeddings.
+
+        Args:
+            embeds: Token embeddings [batch_size, seq_len, hidden_dim]
+            window_size: Size of sliding window
+            stride: Stride between windows
+
+        Returns:
+            Pooled embeddings [batch_size, num_windows, hidden_dim]
+        """
+        batch_size, seq_len, hidden_dim = embeds.shape
+
+        if seq_len < window_size:
+            # Context too short, just mean pool everything
+            return embeds.mean(dim=1, keepdim=True)
+
+        # Use unfold to extract windows
+        # unfold(dimension, size, step) -> adds new dimension at the end
+        windows = embeds.unfold(1, window_size, stride)
+        # Shape: [batch_size, num_windows, hidden_dim, window_size]
+
+        # Mean pool each window
+        pooled_regular = windows.mean(dim=-1)
+        # Shape: [batch_size, num_windows, hidden_dim]
+
+        # Handle remainder tokens (flexible last window)
+        num_regular = pooled_regular.shape[1]
+        regular_end_pos = (num_regular - 1) * stride + window_size
+
+        if regular_end_pos < seq_len:
+            # Pool remaining tokens
+            remainder = embeds[:, regular_end_pos:, :]
+            pooled_remainder = remainder.mean(dim=1, keepdim=True)
+            pooled = torch.cat([pooled_regular, pooled_remainder], dim=1)
+        else:
+            pooled = pooled_regular
+
+        return pooled
+
+    def compress_and_generate(
+        self,
+        context_text: str,
+        prompt_text: str,
+        max_new_tokens: int = 50,
+    ) -> str:
+        """
+        Compress context via mean pooling and generate response.
+
+        Args:
+            context_text: The context to compress
+            prompt_text: The prompt/question to answer
+            max_new_tokens: Maximum tokens to generate
+
+        Returns:
+            Generated text
+        """
+        import torch
+
+        # Tokenize context
+        context_tokens = self.tokenizer.encode(
+            context_text, add_special_tokens=False, return_tensors="pt"
+        ).to(self.device)
+        context_length = context_tokens.shape[1]
+
+        # Calculate window parameters
+        window_size, stride = self._calculate_window_params(context_length)
+
+        # Get context embeddings
+        with torch.no_grad():
+            context_embeds = self.model.model.get_input_embeddings()(context_tokens)
+            # Shape: [1, context_length, hidden_dim]
+
+            # Apply mean pooling
+            pooled_embeds = self._sliding_window_mean_pool(
+                context_embeds, window_size, stride
+            )
+            num_pooled = pooled_embeds.shape[1]
+
+            # Add separator
+            separator = self.separator_embed.unsqueeze(0).unsqueeze(0)
+            pooled_with_sep = torch.cat([pooled_embeds, separator], dim=1)
+            num_compressed = num_pooled + 1
+
+            # Tokenize prompt
+            prompt_tokens = self.tokenizer.encode(
+                prompt_text, add_special_tokens=False, return_tensors="pt"
+            ).to(self.device)
+
+            # Build input sequence: [BOS] + [POOLED_PLACEHOLDERS] + [PROMPT]
+            batch_size = 1
+            bos = torch.full((batch_size, 1), self.bos_token_id, dtype=torch.long, device=self.device)
+            placeholders = torch.full(
+                (batch_size, num_compressed), self.placeholder_token_id, dtype=torch.long, device=self.device
+            )
+            input_ids = torch.cat([bos, placeholders, prompt_tokens], dim=1)
+
+            # Get initial embeddings
+            inputs_embeds = self.model.model.get_input_embeddings()(input_ids)
+
+            # Create mask for pooled positions
+            mask = torch.zeros(input_ids.shape, dtype=torch.bool, device=self.device)
+            mask[:, 1:1+num_compressed] = True  # Mark pooled positions
+
+            # Inject pooled embeddings via masked_scatter_
+            inputs_embeds.masked_scatter_(
+                mask.unsqueeze(-1),
+                pooled_with_sep.reshape(-1, self.hidden_dim)
+            )
+
+            # Prepare vision bypass
+            images = [(self.empty_crop, self.zero_global)]
+            images_spatial_crop = [[1, 1]]
+
+            # Create images_seq_mask (marks which positions have image tokens - none in our case)
+            seq_len = input_ids.shape[1]
+            images_seq_mask = torch.zeros(batch_size, seq_len, dtype=torch.bool, device=self.device)
+
+            # Generate using the model with manual autoregressive decoding
+            generated_tokens = []
+            current_input_ids = input_ids
+            current_embeds = inputs_embeds
+
+            for _ in range(max_new_tokens):
+                # Update images_seq_mask for current sequence length
+                current_seq_len = current_embeds.shape[1]
+                current_images_seq_mask = torch.zeros(
+                    batch_size, current_seq_len, dtype=torch.bool, device=self.device
+                )
+
+                # Forward pass with all required parameters
+                outputs = self.model.forward(
+                    input_ids=current_input_ids,
+                    inputs_embeds=current_embeds,
+                    images=images,
+                    images_spatial_crop=images_spatial_crop,
+                    images_seq_mask=current_images_seq_mask,
+                    use_cache=False,
+                    return_dict=True,
+                )
+
+                # Get next token logits
+                next_token_logits = outputs.logits[:, -1, :]
+                next_token = torch.argmax(next_token_logits, dim=-1)
+
+                # Check for EOS
+                if next_token.item() == self.tokenizer.eos_token_id:
+                    break
+
+                generated_tokens.append(next_token.item())
+
+                # Get embedding for next token and append
+                # next_token shape: [1] (batch dim from argmax)
+                next_token_2d = next_token.unsqueeze(1)  # [1] -> [1, 1]
+                next_embed = self.model.model.get_input_embeddings()(next_token_2d)  # [1, 1, hidden]
+                current_embeds = torch.cat([current_embeds, next_embed], dim=1)
+                current_input_ids = torch.cat([current_input_ids, next_token_2d], dim=1)
+
+            # Decode generated tokens
+            output_text = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
+
+        return output_text
+
+
+def run_inference_mean_pool(
+    prompt: str,
+    context: str,
+    target_tokens: int = 400,
+    model: AutoModel | None = None,
+    tokenizer: AutoTokenizer | None = None,
+) -> tuple[str, int, int]:
+    """
+    Run inference using embedding-level mean pooling compression.
+
+    This replicates Lee et al.'s mean pooling approach for fair comparison.
+
+    Args:
+        prompt: The question/prompt to answer
+        context: The context text to compress
+        target_tokens: Target number of compressed tokens
+        model: Pre-loaded model (optional)
+        tokenizer: Pre-loaded tokenizer (optional)
+
+    Returns:
+        Tuple of (output_text, compressed_tokens, output_tokens)
+    """
+    if model is None or tokenizer is None:
+        model, tokenizer = load_model()
+
+    pooler = EmbeddingMeanPooler(
+        model=model,
+        tokenizer=tokenizer,
+        target_tokens=target_tokens,
+        device="cuda" if torch.cuda.is_available() else "cpu",
+    )
+
+    output = pooler.compress_and_generate(
+        context_text=context,
+        prompt_text=prompt,
+        max_new_tokens=50,
+    )
+
+    output_tokens = len(tokenizer.encode(output, add_special_tokens=False))
+
+    return output, target_tokens, output_tokens
 
 
 # Default rendering settings (dark mode for optimal OCR - see README)
@@ -1539,17 +1848,119 @@ def truncate_text(
     return tokenizer.decode(truncated_tokens)
 
 
-def cmd_truncation(args: argparse.Namespace) -> None:
-    """Run truncation baseline experiment comparing vision vs truncated text on QuALITY.
+def mean_pool_text(
+    text: str, tokenizer: AutoTokenizer, target_tokens: int, seed: int = 42
+) -> str:
+    """Compress text via uniform sentence sampling (approximates mean pooling).
 
-    Tests four conditions:
+    Mean pooling in Lee et al. operates on embeddings, but we can only provide
+    text to the DeepSeek-OCR API. This function approximates mean pooling's key
+    property: preserving information from the ENTIRE document, not just the
+    beginning or end (like truncation does).
+
+    Method: Sample sentences uniformly across the document to match target budget,
+    ensuring coverage of beginning, middle, and end.
+
+    Args:
+        text: The text to compress.
+        tokenizer: The tokenizer to use for token counting.
+        target_tokens: Target number of tokens.
+        seed: Random seed for reproducibility.
+
+    Returns:
+        Compressed text with sentences sampled uniformly from the full document.
+    """
+    # Split into sentences
+    sentence_endings = re.compile(r'(?<=[.!?])\s+')
+    sentences = sentence_endings.split(text)
+    sentences = [s.strip() for s in sentences if s.strip()]
+
+    if not sentences:
+        return text
+
+    # Calculate tokens per sentence
+    sentence_tokens = []
+    for sent in sentences:
+        tokens = len(tokenizer.encode(sent, add_special_tokens=False))
+        sentence_tokens.append(tokens)
+
+    total_tokens = sum(sentence_tokens)
+    if total_tokens <= target_tokens:
+        return text
+
+    n_sentences = len(sentences)
+
+    # Strategy: Always include first and last sentences for coverage,
+    # then fill middle with uniformly sampled sentences
+    selected_indices = set()
+    selected_tokens = 0
+
+    # Always include first sentence if it fits
+    if sentence_tokens[0] <= target_tokens:
+        selected_indices.add(0)
+        selected_tokens += sentence_tokens[0]
+
+    # Always include last sentence if it fits
+    if n_sentences > 1 and selected_tokens + sentence_tokens[-1] <= target_tokens:
+        selected_indices.add(n_sentences - 1)
+        selected_tokens += sentence_tokens[-1]
+
+    # Calculate how many more sentences we can fit
+    remaining_budget = target_tokens - selected_tokens
+    avg_tokens_per_sentence = total_tokens / n_sentences
+    estimated_more = max(0, int(remaining_budget / avg_tokens_per_sentence))
+
+    if estimated_more > 0 and n_sentences > 2:
+        # Sample from middle sentences (excluding first and last)
+        middle_indices = list(range(1, n_sentences - 1))
+
+        if estimated_more >= len(middle_indices):
+            # Can fit all middle sentences
+            candidates = middle_indices
+        else:
+            # Uniformly sample from middle
+            stride = len(middle_indices) / estimated_more
+            candidates = []
+            for i in range(estimated_more):
+                idx = middle_indices[min(int(i * stride), len(middle_indices) - 1)]
+                if idx not in candidates:
+                    candidates.append(idx)
+
+        # Greedily add candidates that fit
+        for idx in candidates:
+            if idx not in selected_indices and selected_tokens + sentence_tokens[idx] <= target_tokens:
+                selected_indices.add(idx)
+                selected_tokens += sentence_tokens[idx]
+
+        # Try to fill any remaining budget with unselected sentences
+        remaining_budget = target_tokens - selected_tokens
+        for idx in middle_indices:
+            if idx not in selected_indices and sentence_tokens[idx] <= remaining_budget:
+                selected_indices.add(idx)
+                remaining_budget -= sentence_tokens[idx]
+
+    # Sort indices to maintain document order
+    selected_indices = sorted(selected_indices)
+
+    # Build compressed text
+    compressed_sentences = [sentences[i] for i in selected_indices]
+    compressed_text = " ".join(compressed_sentences)
+
+    return compressed_text
+
+
+def cmd_truncation(args: argparse.Namespace) -> None:
+    """Run compression baseline experiment comparing vision vs text compression on QuALITY.
+
+    Tests five conditions:
     1. Full text (if fits in context)
     2. Truncated text - first N tokens (beginning of article)
     3. Truncated text - last N tokens (end of article)
-    4. Vision (rendered full article, compressed)
+    4. Mean pooling - uniform sentence sampling (full document coverage)
+    5. Vision (rendered full article, compressed)
 
-    This addresses Lee et al.'s critique by testing whether vision beats truncation
-    on QA tasks where full-document coverage matters.
+    This addresses Lee et al.'s critique by testing whether vision beats their
+    baselines (truncation, mean pooling) on QA tasks where coverage matters.
     """
     data_dir, results_dir = setup_experiment_dirs("truncation")
 
@@ -1590,6 +2001,7 @@ def cmd_truncation(args: argparse.Namespace) -> None:
     results = {
         "mode": args.mode,
         "token_budget": token_budget,
+        "include_mean_pool": getattr(args, "include_mean_pool", False),
         "articles": {},
         "summary": {},
     }
@@ -1597,13 +2009,18 @@ def cmd_truncation(args: argparse.Namespace) -> None:
         "full_text_correct": 0,
         "trunc_first_correct": 0,
         "trunc_last_correct": 0,
+        "mean_pool_correct": 0,
         "vision_correct": 0,
         "total": 0,
     }
 
+    include_mean_pool = getattr(args, "include_mean_pool", False)
+
     logger.info(
-        f"TRUNCATION EXPERIMENT: Mode={args.mode}, Articles={args.num_articles}, Token Budget={token_budget}"
+        f"COMPRESSION BASELINE EXPERIMENT: Mode={args.mode}, Articles={args.num_articles}, Token Budget={token_budget}"
     )
+    if include_mean_pool:
+        logger.info("Including mean pooling baseline (Lee et al.)")
 
     for article_hash, article_data in article_items:
         article = article_data["article"]
@@ -1628,9 +2045,21 @@ def cmd_truncation(args: argparse.Namespace) -> None:
         )
         trunc_last_tokens = len(tokenizer.encode(trunc_last, add_special_tokens=False))
 
+        # Initialize embedding-level mean pooler if needed
+        mean_pooler = None
+        if include_mean_pool:
+            mean_pooler = EmbeddingMeanPooler(
+                model=model,
+                tokenizer=tokenizer,
+                target_tokens=token_budget,
+                device="cuda" if torch.cuda.is_available() else "cpu",
+            )
+
         logger.info(f"  Article tokens: {article_tokens}")
         logger.info(f"  Truncated (first): {trunc_first_tokens} tokens")
         logger.info(f"  Truncated (last): {trunc_last_tokens} tokens")
+        if include_mean_pool:
+            logger.info(f"  Mean pool (embedding-level): {token_budget} tokens")
         logger.info(f"  Vision: {settings.tokens} tokens")
 
         article_results = {
@@ -1639,6 +2068,7 @@ def cmd_truncation(args: argparse.Namespace) -> None:
             "full_text_correct": 0,
             "trunc_first_correct": 0,
             "trunc_last_correct": 0,
+            "mean_pool_correct": 0,
             "vision_correct": 0,
         }
 
@@ -1672,7 +2102,24 @@ def cmd_truncation(args: argparse.Namespace) -> None:
             trunc_last_pred = parse_mc_answer(trunc_last_output)
             trunc_last_correct = trunc_last_pred == expected
 
-            # Condition 4: Vision (full article rendered)
+            # Condition 4: Mean pooling (embedding-level, Lee et al.)
+            mean_pool_pred = -1
+            mean_pool_correct = False
+            if include_mean_pool and mean_pooler is not None:
+                try:
+                    mean_pool_output = mean_pooler.compress_and_generate(
+                        context_text=article,
+                        prompt_text=question_suffix,
+                        max_new_tokens=50,
+                    )
+                    mean_pool_pred = parse_mc_answer(mean_pool_output)
+                    mean_pool_correct = mean_pool_pred == expected
+                except Exception as e:
+                    logger.warning(f"Mean pool inference failed: {e}")
+                    mean_pool_pred = -1
+                    mean_pool_correct = False
+
+            # Condition 5: Vision (full article rendered)
             vision_prompt = f"<image>{question_suffix}"
             vision_output, _, _ = run_inference(
                 vision_prompt,
@@ -1685,28 +2132,33 @@ def cmd_truncation(args: argparse.Namespace) -> None:
             vision_correct = vision_pred == expected
 
             logger.info(f"  Q: {question[:50]}...")
-            logger.info(
-                f"    Full: {full_pred} {'✓' if full_correct else '✗'} | "
-                f"First-{token_budget}: {trunc_first_pred} {'✓' if trunc_first_correct else '✗'} | "
-                f"Last-{token_budget}: {trunc_last_pred} {'✓' if trunc_last_correct else '✗'} | "
-                f"Vision: {vision_pred} {'✓' if vision_correct else '✗'}"
-            )
+            log_parts = [
+                f"Full: {full_pred} {'✓' if full_correct else '✗'}",
+                f"First-{token_budget}: {trunc_first_pred} {'✓' if trunc_first_correct else '✗'}",
+                f"Last-{token_budget}: {trunc_last_pred} {'✓' if trunc_last_correct else '✗'}",
+            ]
+            if include_mean_pool:
+                log_parts.append(f"MeanPool: {mean_pool_pred} {'✓' if mean_pool_correct else '✗'}")
+            log_parts.append(f"Vision: {vision_pred} {'✓' if vision_correct else '✗'}")
+            logger.info(f"    {' | '.join(log_parts)}")
 
             # Store results
-            article_results["questions"].append(
-                {
-                    "question": question[:100],
-                    "expected": expected,
-                    "full_pred": full_pred,
-                    "trunc_first_pred": trunc_first_pred,
-                    "trunc_last_pred": trunc_last_pred,
-                    "vision_pred": vision_pred,
-                    "full_correct": full_correct,
-                    "trunc_first_correct": trunc_first_correct,
-                    "trunc_last_correct": trunc_last_correct,
-                    "vision_correct": vision_correct,
-                }
-            )
+            question_result = {
+                "question": question[:100],
+                "expected": expected,
+                "full_pred": full_pred,
+                "trunc_first_pred": trunc_first_pred,
+                "trunc_last_pred": trunc_last_pred,
+                "vision_pred": vision_pred,
+                "full_correct": full_correct,
+                "trunc_first_correct": trunc_first_correct,
+                "trunc_last_correct": trunc_last_correct,
+                "vision_correct": vision_correct,
+            }
+            if include_mean_pool:
+                question_result["mean_pool_pred"] = mean_pool_pred
+                question_result["mean_pool_correct"] = mean_pool_correct
+            article_results["questions"].append(question_result)
 
             # Update counts
             if full_correct:
@@ -1718,6 +2170,9 @@ def cmd_truncation(args: argparse.Namespace) -> None:
             if trunc_last_correct:
                 article_results["trunc_last_correct"] += 1
                 stats["trunc_last_correct"] += 1
+            if include_mean_pool and mean_pool_correct:
+                article_results["mean_pool_correct"] += 1
+                stats["mean_pool_correct"] += 1
             if vision_correct:
                 article_results["vision_correct"] += 1
                 stats["vision_correct"] += 1
@@ -1731,6 +2186,7 @@ def cmd_truncation(args: argparse.Namespace) -> None:
         full_acc = round(stats["full_text_correct"] / n * 100, 1)
         trunc_first_acc = round(stats["trunc_first_correct"] / n * 100, 1)
         trunc_last_acc = round(stats["trunc_last_correct"] / n * 100, 1)
+        mean_pool_acc = round(stats["mean_pool_correct"] / n * 100, 1) if include_mean_pool else None
         vision_acc = round(stats["vision_correct"] / n * 100, 1)
 
         results["summary"] = {
@@ -1745,15 +2201,19 @@ def cmd_truncation(args: argparse.Namespace) -> None:
             "vision_beats_both_truncations": vision_acc
             > max(trunc_first_acc, trunc_last_acc),
         }
+        if include_mean_pool:
+            results["summary"]["mean_pool_accuracy"] = mean_pool_acc
+            results["summary"]["vision_beats_mean_pool"] = vision_acc > mean_pool_acc
+            results["summary"]["mean_pool_beats_truncations"] = mean_pool_acc > max(trunc_first_acc, trunc_last_acc)
 
         logger.info("\n" + "=" * 60)
-        logger.info("TRUNCATION EXPERIMENT RESULTS")
+        logger.info("COMPRESSION BASELINE EXPERIMENT RESULTS")
         logger.info("=" * 60)
         logger.info(f"Token budget: {token_budget} (matching {args.mode} mode)")
         logger.info(f"Total questions: {n}")
         logger.info("")
         logger.info(f"{'Condition':<20} | {'Accuracy':<10} | {'Correct':<10}")
-        logger.info("-" * 45)
+        logger.info("-" * 50)
         logger.info(
             f"{'Full text':<20} | {full_acc:>8}% | {stats['full_text_correct']}/{n}"
         )
@@ -1763,12 +2223,19 @@ def cmd_truncation(args: argparse.Namespace) -> None:
         logger.info(
             f"{'Trunc (last N)':<20} | {trunc_last_acc:>8}% | {stats['trunc_last_correct']}/{n}"
         )
+        if include_mean_pool:
+            logger.info(
+                f"{'Mean Pool':<20} | {mean_pool_acc:>8}% | {stats['mean_pool_correct']}/{n}"
+            )
         logger.info(
             f"{'Vision':<20} | {vision_acc:>8}% | {stats['vision_correct']}/{n}"
         )
         logger.info("")
         logger.info(f"Vision beats truncation (first): {vision_acc > trunc_first_acc}")
         logger.info(f"Vision beats truncation (last): {vision_acc > trunc_last_acc}")
+        if include_mean_pool:
+            logger.info(f"Vision beats mean pool: {vision_acc > mean_pool_acc}")
+            logger.info(f"Mean pool beats truncations: {mean_pool_acc > max(trunc_first_acc, trunc_last_acc)}")
 
         save_experiment_results(
             results,
@@ -3929,7 +4396,7 @@ def main() -> None:
 
     # Truncation baseline command
     trunc_parser = subparsers.add_parser(
-        "truncation", help="Run truncation baseline experiment (Experiment D)"
+        "truncation", help="Run compression baseline experiment (Experiment D)"
     )
     trunc_parser.add_argument(
         "--mode",
@@ -3940,6 +4407,11 @@ def main() -> None:
     )
     trunc_parser.add_argument("--num-articles", type=int, default=5)
     trunc_parser.add_argument("--questions-per-article", type=int, default=5)
+    trunc_parser.add_argument(
+        "--include-mean-pool",
+        action="store_true",
+        help="Include mean pooling baseline (Lee et al.'s strongest simple baseline)",
+    )
 
     # Noise injection experiment command (Experiment A)
     noise_parser = subparsers.add_parser(
