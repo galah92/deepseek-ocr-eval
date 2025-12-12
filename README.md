@@ -424,6 +424,36 @@ See `MECHANISTIC_HYPOTHESES.md` for full details.
 
 - **Glyph** ([arXiv:2510.17800](https://arxiv.org/abs/2510.17800)) — Concurrent work showing 3-4x compression via visual-text encoding
 
+## Project Structure
+
+```
+deepseek-ocr-eval/
+├── eval.py                    # Main evaluation script with all experiments
+├── baselines/                 # Modular compression baselines (Lee et al. style)
+│   ├── __init__.py           # Package exports
+│   ├── config.py             # Shared configuration (modes, tokens, settings)
+│   ├── meanpool.py           # Embedding-level mean pooling (Lee et al. replication)
+│   ├── truncation.py         # Token truncation baselines (first-N, last-N)
+│   ├── vision.py             # Vision encoding wrapper for DeepSeek-OCR
+│   └── utils/
+│       ├── model.py          # Model loading and caching
+│       ├── image.py          # Text-to-image rendering
+│       └── generation.py     # Output parsing utilities
+├── results/                   # Experiment outputs and logs
+└── MECHANISTIC_HYPOTHESES.md  # Detailed analysis of WHY vision is robust
+```
+
+The `baselines/` module mirrors the structure from [Lee et al.'s code](https://github.com/ivnle/bad-autoencoding), enabling fair comparisons:
+
+```python
+from baselines import (
+    EmbeddingMeanPooler,    # Their exact mean pooling approach
+    truncate_text,          # Token truncation baseline
+    VisionEncoder,          # Our vision compression
+    run_inference,          # Direct model inference
+)
+```
+
 ## References
 
 - Wei et al. (2024). [DeepSeek-OCR: Contexts Optical Compression](https://arxiv.org/abs/2510.18234)
