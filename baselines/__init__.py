@@ -22,7 +22,14 @@ from .config import (
     TMP_OUTPUT_PATH,
     ModeSettings,
 )
-from .meanpool import EmbeddingMeanPooler, run_inference_mean_pool
+from .meanpool import (
+    LEE_STRIDE,
+    LEE_WINDOW_SIZE,
+    EmbeddingMeanPooler,
+    download_lee_checkpoint,
+    load_trained_meanpool_model,
+    run_inference_mean_pool,
+)
 from .truncation import (
     count_tokens,
     truncate_text,
@@ -56,6 +63,10 @@ __all__ = [
     # Baselines
     "EmbeddingMeanPooler",
     "run_inference_mean_pool",
+    "load_trained_meanpool_model",
+    "download_lee_checkpoint",
+    "LEE_WINDOW_SIZE",
+    "LEE_STRIDE",
     "truncate_text",
     "truncate_text_first_n",
     "truncate_text_last_n",
