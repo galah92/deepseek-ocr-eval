@@ -295,6 +295,18 @@ class EmbeddingMeanPooler:
         ).to(self.device)
         context_length = context_tokens.shape[1]
 
+        # When using fixed window/stride (trained model), truncate input to match target
+        # pooled_tokens = context_tokens / stride, so context = target * stride
+        if self.fixed_window_size is not None and self.fixed_stride is not None:
+            max_context = (self.target_tokens - 1) * self.fixed_stride  # -1 for separator
+            if context_length > max_context:
+                logger.info(
+                    f"Truncating context from {context_length} to {max_context} tokens "
+                    f"(target={self.target_tokens}, stride={self.fixed_stride})"
+                )
+                context_tokens = context_tokens[:, :max_context]
+                context_length = max_context
+
         # Calculate window parameters
         window_size, stride = self._calculate_window_params(context_length)
 

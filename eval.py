@@ -5,6 +5,7 @@ import logging
 import random
 import re
 import string
+import tempfile
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -468,6 +469,86 @@ def render_text_to_image(
         y += line_height
 
     img.save(output_path)
+
+
+def render_text_to_pil(
+    text: str,
+    max_width: int = 1200,
+    padding: int = 30,
+    line_spacing: int = 4,
+) -> Image.Image:
+    """Render text to a PIL Image (in-memory, no disk I/O).
+
+    Args:
+        text: The input text to render.
+        max_width: The maximum width of the output image.
+        padding: The padding around the text content within the image.
+        line_spacing: Additional spacing between lines of text.
+
+    Returns:
+        PIL Image object.
+    """
+    lines = []
+    for paragraph in text.split("\n"):
+        if not paragraph.strip():
+            lines.append("")
+            continue
+        words = paragraph.split()
+        current_line = []
+        for word in words:
+            test_line = " ".join(current_line + [word])
+            bbox = FONT.getbbox(test_line)
+            if bbox[2] > max_width - 2 * padding:
+                if current_line:
+                    lines.append(" ".join(current_line))
+                current_line = [word]
+            else:
+                current_line.append(word)
+        if current_line:
+            lines.append(" ".join(current_line))
+
+    line_height = FONT_SIZE + line_spacing
+    img_height = len(lines) * line_height + 2 * padding
+    img_width = max_width
+
+    img = Image.new("RGB", (img_width, img_height), color=BG_COLOR)
+    draw = ImageDraw.Draw(img)
+
+    y = padding
+    for line in lines:
+        draw.text((padding, y), line, font=FONT, fill=FG_COLOR)
+        y += line_height
+
+    return img
+
+
+# Shared temp file for rendering (avoids disk accumulation)
+_TEMP_IMAGE_FILE = None
+
+
+def get_temp_image_path() -> str:
+    """Get a reusable temp file path for rendering images."""
+    global _TEMP_IMAGE_FILE
+    if _TEMP_IMAGE_FILE is None:
+        _TEMP_IMAGE_FILE = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+    return _TEMP_IMAGE_FILE.name
+
+
+def render_text_to_temp(text: str) -> str:
+    """Render text to a temp file and return the path.
+
+    Uses a single reusable temp file to avoid disk accumulation.
+
+    Args:
+        text: The input text to render.
+
+    Returns:
+        Path to the temp image file.
+    """
+    img = render_text_to_pil(text)
+    temp_path = get_temp_image_path()
+    img.save(temp_path)
+    return temp_path
 
 
 def render_text_to_image_with_params(
@@ -2046,10 +2127,8 @@ def cmd_truncation(args: argparse.Namespace) -> None:
 
         logger.info(f"\nArticle: {article_hash} ({len(article.split())} words)")
 
-        # Render image for vision condition
-        img_path = data_dir / f"{article_hash}.png"
-        if not img_path.exists():
-            render_text_to_image(article, str(img_path))
+        # Render image for vision condition (in-memory, reuses temp file)
+        img_path = render_text_to_temp(article)
 
         # Calculate article token count
         article_tokens = len(tokenizer.encode(article, add_special_tokens=False))
