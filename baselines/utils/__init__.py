@@ -6,19 +6,19 @@ This module provides helper functions for:
 - Text generation and parsing
 """
 
-from .model import load_model, get_device, count_parameters
-from .image import (
-    render_text_to_image,
-    render_text_to_image_with_params,
-    calculate_valid_vision_tokens,
-    calculate_num_crops,
-)
 from .generation import (
-    parse_mc_answer,
     clean_output,
     extract_number,
     format_mc_prompt,
+    parse_mc_answer,
 )
+from .image import (
+    calculate_num_crops,
+    calculate_valid_vision_tokens,
+    render_text_to_image,
+    render_text_to_image_with_params,
+)
+from .model import count_parameters, get_device, load_model
 
 __all__ = [
     # Model utilities

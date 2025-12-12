@@ -15,7 +15,7 @@ import torch
 from transformers import AutoModel, AutoTokenizer
 
 from .config import GUNDAM_PRESET
-from .utils.model import load_model, get_device
+from .utils.model import get_device, load_model
 
 logger = logging.getLogger(__name__)
 
@@ -225,10 +225,6 @@ class EmbeddingMeanPooler:
             # Prepare vision bypass
             images = [(self.empty_crop, self.zero_global)]
             images_spatial_crop = [[1, 1]]
-
-            # Create images_seq_mask
-            seq_len = input_ids.shape[1]
-            images_seq_mask = torch.zeros(batch_size, seq_len, dtype=torch.bool, device=self.device)
 
             # Generate with manual autoregressive decoding
             generated_tokens = []

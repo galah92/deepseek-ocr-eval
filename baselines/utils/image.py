@@ -8,13 +8,13 @@ import logging
 from pathlib import Path
 
 from matplotlib import font_manager
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from ..config import (
-    ModeSettings,
-    DEFAULT_FONT_SIZE,
     DEFAULT_BG_COLOR,
     DEFAULT_FG_COLOR,
+    DEFAULT_FONT_SIZE,
+    ModeSettings,
 )
 
 logger = logging.getLogger(__name__)

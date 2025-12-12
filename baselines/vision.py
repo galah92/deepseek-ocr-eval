@@ -11,9 +11,9 @@ import torch
 from PIL import Image
 from transformers import AutoModel, AutoTokenizer
 
-from .config import MODE_SETTINGS, ModeSettings, TMP_OUTPUT_PATH
-from .utils.model import load_model
+from .config import MODE_SETTINGS, TMP_OUTPUT_PATH
 from .utils.image import calculate_valid_vision_tokens
+from .utils.model import load_model
 
 logger = logging.getLogger(__name__)
 
@@ -130,10 +130,11 @@ class VisionEncoder:
         self.model = model
         self.tokenizer = tokenizer
         self.mode = mode
-        self.settings = MODE_SETTINGS.get(mode)
 
-        if self.settings is None:
+        settings = MODE_SETTINGS.get(mode)
+        if settings is None:
             raise ValueError(f"Unknown mode: {mode}. Valid modes: {list(MODE_SETTINGS.keys())}")
+        self.settings = settings
 
     def encode_and_generate(
         self,
